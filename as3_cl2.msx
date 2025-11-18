@@ -1,0 +1,31 @@
+[TITLE]
+AsIII-Chlorine reaction kinetic model
+
+[OPTIONS]
+RATE_UNITS  MIN
+AREA_UNITS  FT2
+RATE_UNITS  DAY
+SOLVER      ROS2
+COUPLING    FULL
+TIMESTEP    300
+RTOL        1.E-3
+ATOL        1.E-3
+
+[SPECIES]
+; Type   Name      Units   RTol   ATol
+BULK    CL2       MG      1.E-3  1.E-3
+BULK    AsIII     MG      1.E-3  1.E-3
+
+[COEFFICIENTS]
+CONSTANT KB         6.94444E-4  ;1/24/60=Free chlorine bulk decay rate == 1/day
+CONSTANT K2         69.4        ;100000/24/60= Arsenite oxidation velocity;
+CONSTANT MWChlorine 70.9        ;mg/mmol free chlorine as Cl2
+CONSTANT MWAsIII    74.92       ;mg/mmol arsenite as As
+PARAMETER   Kw                                1.000000e+00
+
+[TERMS]
+Kf     1.5826e-4 * RE^0.88 / D
+
+[PIPE]
+RATE CL2 -KB*CL2 - K2*CL2*AsIII/MWAsIII - (4/D)*Kw*Kf/(Kw+Kf)*CL2
+RATE AsIII    -K2*CL2*AsIII/MWChlorine
