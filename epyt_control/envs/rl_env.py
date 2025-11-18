@@ -219,15 +219,18 @@ class RlEnv(ScenarioControlEnv, Env):
                                               f"epytflow_env_MSX_{uuid.uuid4()}.hyd")
                     sim = self._scenario_sim.run_hydraulic_simulation
                     self._hydraulic_scada_data = sim(hyd_export=hyd_export,
-                                                     frozen_sensor_config=self._frozen_sensor_config)
+                                                     frozen_sensor_config=self._frozen_sensor_config,
+                                                     reapply_uncertainties=self.reapply_uncertainties_at_reset)
 
                 gen = self._scenario_sim.run_advanced_quality_simulation_as_generator
                 self._sim_generator = gen(hyd_export, support_abort=True,
-                                          frozen_sensor_config=self._frozen_sensor_config)
+                                          frozen_sensor_config=self._frozen_sensor_config,
+                                          reapply_uncertainties=self.reapply_uncertainties_at_reset)
             else:
                 gen = self._scenario_sim.run_hydraulic_simulation_as_generator
                 self._sim_generator = gen(support_abort=True,
-                                          frozen_sensor_config=self._frozen_sensor_config)
+                                          frozen_sensor_config=self._frozen_sensor_config,
+                                          reapply_uncertainties=self.reapply_uncertainties_at_reset)
 
             scada_data = self._next_sim_itr()
 

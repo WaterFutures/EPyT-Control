@@ -129,7 +129,7 @@ observation space will be derived automatically:
         scenario.add_species_injection_source(species_id="CL2",
                                               node_id="1",
                                               pattern=np.array([1]),
-                                              source_type=ToolkitConstants.EN_MASS,
+                                              source_type=EpanetConstants.EN_MASS,
                                               pattern_id=f"cl2-injection-at-node_1")
 
         # Place flow sensors everywhere
@@ -153,7 +153,7 @@ and we decide not to re-run the hydraulic simulation when the environment is res
             cl_injection_action = SpeciesInjectionAction(species_id="CL2",
                                                          node_id="1",
                                                          pattern_id="cl2-injection-at-node_1",
-                                                         source_type_id=ToolkitConstants.EN_MASS,
+                                                         source_type_id=EpanetConstants.EN_MASS,
                                                          upper_bound=10000.)
 
             scenario_config = ScenarioConfig.load_from_file(scenario_config_file_in)

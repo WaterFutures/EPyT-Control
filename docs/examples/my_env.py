@@ -7,9 +7,9 @@ import time
 import numpy as np
 from epyt_flow.data.benchmarks import load_leakdb_scenarios
 from epyt_flow.utils import get_temp_folder
-from epyt_flow.simulation import ScenarioSimulator, ToolkitConstants, ModelUncertainty, \
+from epyt_flow.simulation import ScenarioSimulator, EpanetConstants, ModelUncertainty, \
     ScenarioConfig, ScadaData, SensorConfig
-from epyt_flow.uncertainty import RelativeUniformUncertainty, AbsoluteGaussianUncertainty
+from epyt_flow.uncertainty import AbsoluteGaussianUncertainty
 from epyt_control.envs import HydraulicControlEnv
 from epyt_control.envs.actions import ChemicalInjectionAction
 
@@ -21,17 +21,18 @@ def create_scenario() -> ScenarioConfig:
         # Enable chlorine simulation and place a chlorine injection pump at the reservoir
         sim.enable_chemical_analysis()
 
-        reservoid_node_id, = sim.epanet_api.getNodeReservoirNameID()
+        reservoid_node_id, = sim.epanet_api.get_all_reservoirs_id()[0]
         sim.add_quality_source(node_id=reservoid_node_id,
                                pattern=np.array([1.]),
-                               source_type=ToolkitConstants.EN_MASS,
+                               source_type=EpanetConstants.EN_MASS,
                                pattern_id="my-chl-injection")
 
         # Set initial concentration and simple (constant) reactions
-        zero_nodes = [0] * sim.epanet_api.getNodeCount()
-        sim.epanet_api.setNodeInitialQuality(zero_nodes)
-        sim.epanet_api.setLinkBulkReactionCoeff([-.5] * sim.epanet_api.getLinkCount())
-        sim.epanet_api.setLinkWallReactionCoeff([-.01] * sim.epanet_api.getLinkCount())
+        for node_idx in sim.epanet_api.get_all_nodes_idx():
+            sim.epanet_api.set_node_init_quality(node_idx, 0)
+        for link_idx in sim.epanet_api.get_all_links_idx():
+            sim.epanet_api.setlinkvalue(link_idx, EpanetConstants.EN_BULKORDER, -.5)
+            sim.epanet_api.setlinkvalue(link_idx, EpanetConstants.EN_WALLORDER, -.01)
 
         # Set flow and chlorine sensors everywhere
         sim.sensor_config = SensorConfig.create_empty_sensor_config(sim.sensor_config)
@@ -54,7 +55,7 @@ class SimpleChlorineInjectionEnv(HydraulicControlEnv):
 
         chlorine_injection_action_space = ChemicalInjectionAction(node_id="1",
                                                                   pattern_id="my-chl-injection",
-                                                                  source_type_id=ToolkitConstants.EN_MASS,
+                                                                  source_type_id=EpanetConstants.EN_MASS,
                                                                   upper_bound=10000.)
 
         super().__init__(scenario_config=scenario_config,

@@ -104,7 +104,8 @@ class EpanetMsxControlEnv(RlEnv):
                     self._hydraulic_scada_data = self._hyd_scada_in
                 else:
                     sim = self._scenario_sim.run_hydraulic_simulation
-                    self._hydraulic_scada_data = sim(hyd_export=self._hyd_export)
+                    self._hydraulic_scada_data = sim(hyd_export=self._hyd_export,
+                                                     reapply_uncertainties=self.reapply_uncertainties_at_reset)
             else:
                 # Abort current simulation if any is runing
                 try:
@@ -115,7 +116,8 @@ class EpanetMsxControlEnv(RlEnv):
 
             # Run advanced quality analysis (EPANET-MSX) on top of the computed hydraulics
             gen = self._scenario_sim.run_advanced_quality_simulation_as_generator
-            self._sim_generator = gen(self._hyd_export, support_abort=True)
+            self._sim_generator = gen(self._hyd_export, support_abort=True,
+                                      reapply_uncertainties=self.reapply_uncertainties_at_reset)
 
             scada_data = self._next_sim_itr()
 

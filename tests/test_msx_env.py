@@ -6,7 +6,7 @@ from pathlib import Path
 import random
 import numpy as np
 from epyt_flow.data.benchmarks import load_leakdb_scenarios
-from epyt_flow.simulation import ScenarioSimulator, ToolkitConstants, ModelUncertainty, \
+from epyt_flow.simulation import ScenarioSimulator, EpanetConstants, ModelUncertainty, \
     ScenarioConfig, ScadaData, SensorConfig
 from epyt_flow.simulation.events import SpeciesInjectionEvent
 from epyt_flow.uncertainty import RelativeUniformUncertainty, AbsoluteGaussianUncertainty
@@ -34,12 +34,12 @@ def create_scenario(scenario_id: int):
         sim.set_general_parameters(simulation_duration=to_seconds(days=21))
 
         # Place a chlorine injection pump at the reservoirs and tanks
-        for node_id in sim.epanet_api.getNodeReservoirNameID() + sim.epanet_api.getNodeTankNameID():
+        for node_id in sim.epanet_api.get_all_reservoirs_id() + sim.epanet_api.get_all_tanks_id():
             print(node_id)
             sim.add_species_injection_source(species_id="CL2", node_id=node_id,
-                                            pattern=np.array([1000]),
-                                            source_type=ToolkitConstants.EN_MASS,
-                                            pattern_id=f"cl2-injection-at-node_{node_id}")
+                                             pattern=np.array([1000]),
+                                             source_type=EpanetConstants.EN_MASS,
+                                             pattern_id=f"cl2-injection-at-node_{node_id}")
 
         # Set flow and chlorine sensors everywhere
         sim.sensor_config = SensorConfig.create_empty_sensor_config(sim.sensor_config)
@@ -62,7 +62,7 @@ def create_scenario(scenario_id: int):
             sim.add_system_event(SpeciesInjectionEvent(species_id="AsIII",
                                                        node_id=contamination_node_id,
                                                        profile=np.array([contamination_strength]),
-                                                       source_type=ToolkitConstants.EN_MASS,
+                                                       source_type=EpanetConstants.EN_MASS,
                                                        start_time=to_seconds(days=start_day),
                                                        end_time=to_seconds(days=end_day)))
 
@@ -92,7 +92,7 @@ class MyAdvancedQualityControlEnv(AdvancedQualityControlEnv):
         super().__init__(scenario_config=ScenarioConfig.load_from_file(scenario_config_file_in),
                          action_space=[SpeciesInjectionAction(species_id="CL2", node_id="1",
                                                               pattern_id="cl2-injection-at-node_1",
-                                                              source_type_id=ToolkitConstants.EN_MASS,
+                                                              source_type_id=EpanetConstants.EN_MASS,
                                                               upper_bound=10.)],
                          rerun_hydraulics_when_reset=False)
 
@@ -155,7 +155,7 @@ class MyMultiConfigAdvancedQualityControlEnv(MultiConfigAdvancedQualityControlEn
         super().__init__(scenario_configs=[ScenarioConfig.load_from_file(scenario_config_file_in)],
                          action_space=[SpeciesInjectionAction(species_id="CL2", node_id="1",
                                                               pattern_id="cl2-injection-at-node_1",
-                                                              source_type_id=ToolkitConstants.EN_MASS,
+                                                              source_type_id=EpanetConstants.EN_MASS,
                                                               upper_bound=10.)],
                          rerun_hydraulics_when_reset=False)
 

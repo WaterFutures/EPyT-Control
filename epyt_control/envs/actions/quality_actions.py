@@ -5,7 +5,7 @@ controlled by the agent.
 """
 from typing import Optional
 from epyt_flow.gym import ScenarioControlEnv
-from epyt_flow.simulation import ToolkitConstants
+from epyt_flow.simulation import EpanetConstants
 from gymnasium.spaces import Space, Box
 
 from .actions import Action
@@ -23,7 +23,7 @@ class ChemicalInjectionAction(Action):
         ID of the pattern that is used for the injection.
     source_type_id : `int`
         Type of the injection source -- must be one of
-        the following EPANET toolkit constants:
+        the following EPANET constants:
 
             - EN_CONCEN     = 0
             - EN_MASS       = 1
@@ -53,8 +53,8 @@ class ChemicalInjectionAction(Action):
         if not isinstance(source_type_id, int):
             raise TypeError("'source_type_id' must be an instance of 'int' " +
                             f"but not of '{type(source_type_id)}'")
-        if source_type_id not in [ToolkitConstants.EN_MASS, ToolkitConstants.EN_CONCEN,
-                                  ToolkitConstants.EN_SETPOINT, ToolkitConstants.EN_FLOWPACED]:
+        if source_type_id not in [EpanetConstants.EN_MASS, EpanetConstants.EN_CONCEN,
+                                  EpanetConstants.EN_SETPOINT, EpanetConstants.EN_FLOWPACED]:
             raise ValueError("Invalid 'source_type_id'")
         if upper_bound is not None:
             if not isinstance(upper_bound, float):
