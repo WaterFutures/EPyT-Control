@@ -234,10 +234,9 @@ class RlEnv(ScenarioControlEnv, Env):
 
             scada_data = self._next_sim_itr()
 
-        r = scada_data
-        if isinstance(r, tuple):
-            r, _ = r
-        r = self._get_observation(r)
+        if isinstance(scada_data, tuple):
+            scada_data, _ = scada_data
+        r = self._get_observation(scada_data)
 
         return r, {"scada_data": scada_data}
 
