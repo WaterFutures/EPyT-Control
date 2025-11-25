@@ -233,7 +233,7 @@ class MultiConfigEpanetMsxControlEnv(EpanetMsxControlEnv):
         self._hydraulic_scada_datas[self._current_scenario_idx] = self._hydraulic_scada_data
 
         # Move on to next scenario
-        self._current_scenario_idx = self._current_scenario_idx + 1 % len(self._scenario_configs)
+        self._current_scenario_idx = (self._current_scenario_idx + 1) % len(self._scenario_configs)
         self._scenario_config = self._scenario_configs[self._current_scenario_idx]
         self._scenario_sim = self._scenario_sims[self._current_scenario_idx]
         self._hyd_export = self._hyd_exports[self._current_scenario_idx]
