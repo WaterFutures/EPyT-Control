@@ -149,6 +149,11 @@ class MultiConfigEpanetControlEnv(EpanetControlEnv):
         injection of the chemical has to be controlled.
 
         The default is None.
+    reload_scenario_when_reset : `bool`, optional
+        If True, the scenario (incl. the .inp and .msx file) is reloaded from the hard disk.
+        If False, only the simulation is reset.
+
+        The default is True.
     """
     def __init__(self, scenario_configs: list[ScenarioConfig],
                  pumps_speed_actions: Optional[list[PumpSpeedAction]] = None,
