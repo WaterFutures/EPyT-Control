@@ -149,6 +149,10 @@ class MultiConfigEpanetControlEnv(EpanetControlEnv):
         injection of the chemical has to be controlled.
 
         The default is None.
+    autoreset : `bool`, optional
+        If True, the environment is automatically reset when the episode ends. In this case, `terminated` will always be `False`, so the environment can't be wrapped in a vectorized environment from Stable Baselines 3.
+        If False, the environment's `step` method returns `terminated=True` at the end of an episode, and `reset` has to be called to start the next scenario.
+        The default is True.
     reload_scenario_when_reset : `bool`, optional
         If True, the scenario (incl. the .inp and .msx file) is reloaded from the hard disk.
         If False, only the simulation is reset.
@@ -160,6 +164,7 @@ class MultiConfigEpanetControlEnv(EpanetControlEnv):
                  pumps_state_actions: Optional[list[PumpStateAction]] = None,
                  valves_state_actions: Optional[list[ValveStateAction]] = None,
                  chemical_injection_actions: Optional[list[ChemicalInjectionAction]] = None,
+                 autoreset: bool = True,
                  reload_scenario_when_reset: bool = True):
         if not isinstance(scenario_configs, list):
             raise TypeError("'scenario_configs' must be an instance of " +
@@ -181,7 +186,7 @@ class MultiConfigEpanetControlEnv(EpanetControlEnv):
 
         super().__init__(self._scenario_configs[self._current_scenario_idx], pumps_speed_actions,
                          pumps_state_actions, valves_state_actions, chemical_injection_actions,
-                         autoreset=True,
+                         autoreset=autoreset,
                          reload_scenario_when_reset=reload_scenario_when_reset)
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict[str, Any]] = None
