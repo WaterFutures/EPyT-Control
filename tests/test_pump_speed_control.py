@@ -9,6 +9,8 @@ from epyt_flow.utils import to_seconds
 from epyt_control.envs import HydraulicControlEnv, MultiConfigHydraulicControlEnv
 from epyt_control.envs.actions import PumpSpeedAction
 from gymnasium.utils.env_checker import check_env
+from gymnasium.spaces import Box, Tuple
+from gymnasium.spaces.utils import flatten_space
 
 
 def create_scenario(f_inp_in: str) -> tuple[ScenarioConfig, list[str]]:
@@ -233,6 +235,24 @@ def test_reload():
             assert isinstance(reward, float)
             assert terminated is False
 
+
+def test_sensor_ordering():
+    with ContinuousPumpControlEnv(
+        autoreset=False, reload_scenario_when_reset=True
+    ) as env:
+        sensor_config = env._scenario_config.sensor_config
+        pressure_obs_space = [Box(low=0, high=float("inf"))] * len(
+            sensor_config.pressure_sensors
+        )
+        flow_obs_space = [Box(low=float("-inf"), high=float("inf"))] * len(
+            sensor_config.flow_sensors
+        )
+        pump_efficiency_obs_space = [Box(low=0, high=float("inf"))] * len(
+            sensor_config.pump_efficiency_sensors
+        )
+        obs_space_list = pressure_obs_space + flow_obs_space + pump_efficiency_obs_space
+        correctly_ordered_obs_space = flatten_space(Tuple(obs_space_list))
+        assert env.observation_space==correctly_ordered_obs_space
 
 def test_multiconfig():
     with ContinuousPumpControlMultiConfigEnv(reload_scenario_when_reset=True) as env:

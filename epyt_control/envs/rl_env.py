@@ -8,6 +8,15 @@ from copy import deepcopy
 from typing import Optional, Any, Union
 import numpy as np
 from epyt_flow.simulation import ScadaData, ScenarioConfig, ScenarioSimulator
+from epyt_flow.simulation.sensor_config import SENSOR_TYPE_NODE_PRESSURE, \
+SENSOR_TYPE_NODE_QUALITY, SENSOR_TYPE_NODE_DEMAND, \
+SENSOR_TYPE_LINK_FLOW, SENSOR_TYPE_LINK_QUALITY, \
+SENSOR_TYPE_VALVE_STATE, SENSOR_TYPE_PUMP_STATE, \
+SENSOR_TYPE_TANK_VOLUME, SENSOR_TYPE_NODE_BULK_SPECIES, \
+SENSOR_TYPE_LINK_BULK_SPECIES, SENSOR_TYPE_SURFACE_SPECIES, \
+SENSOR_TYPE_PUMP_EFFICIENCY, SENSOR_TYPE_PUMP_ENERGYCONSUMPTION, \
+valid_sensor_types
+
 from epyt_flow.gym import ScenarioControlEnv
 from epyt_flow.utils import get_temp_folder
 from gymnasium import Env
@@ -101,26 +110,66 @@ class RlEnv(ScenarioControlEnv, Env):
         obs_space = []
         sensor_config = self._scenario_config.sensor_config
 
-        obs_space += [Box(low=0, high=float("inf"))] * len(sensor_config.pressure_sensors)
-        obs_space += [Box(low=float("-inf"), high=float("inf"))] * len(sensor_config.flow_sensors)
-        obs_space += [Box(low=0, high=float("inf"))] * len(sensor_config.demand_sensors)
-        obs_space += [Box(low=0, high=float("inf"))] * len(sensor_config.quality_node_sensors)
-        obs_space += [Box(low=0, high=float("inf"))] * len(sensor_config.quality_link_sensors)
-        obs_space += [Discrete(2, start=2)] * len(sensor_config.valve_state_sensors)
-        obs_space += [Discrete(2, start=2)] * len(sensor_config.pump_state_sensors)
-        obs_space += [Box(low=0, high=float("inf"))] * len(sensor_config.pump_efficiency_sensors)
-        obs_space += [Box(low=0, high=float("inf"))] * \
-            len(sensor_config.pump_energyconsumption_sensors)
-        obs_space += [Box(low=0, high=float("inf"))] * len(sensor_config.tank_volume_sensors)
-        for species_id in sensor_config.surface_species_sensors:
-            obs_space += [Box(low=0, high=float("inf"))] * \
-                len(sensor_config.surface_species_sensors[species_id])
-        for species_id in sensor_config.bulk_species_node_sensors:
-            obs_space += [Box(low=0, high=float("inf"))] * \
-                len(sensor_config.bulk_species_node_sensors[species_id])
-        for species_id in sensor_config.bulk_species_link_sensors:
-            obs_space += [Box(low=0, high=float("inf"))] * \
-                len(sensor_config.bulk_species_link_sensors[species_id])
+        for sensor_type in sensor_config.sensor_ordering:
+            if sensor_type==SENSOR_TYPE_NODE_PRESSURE:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.pressure_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_LINK_FLOW:
+                obs_space += [Box(low=float("-inf"), high=float("inf"))] * len(
+                    sensor_config.flow_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_NODE_DEMAND:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.demand_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_NODE_QUALITY:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.quality_node_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_LINK_QUALITY:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.quality_link_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_VALVE_STATE:
+                obs_space += [Discrete(2, start=2)] * len(
+                    sensor_config.valve_state_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_PUMP_STATE:
+                obs_space += [Discrete(2, start=2)] * len(
+                    sensor_config.pump_state_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_PUMP_EFFICIENCY:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.pump_efficiency_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_PUMP_ENERGYCONSUMPTION:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.pump_energyconsumption_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_TANK_VOLUME:
+                obs_space += [Box(low=0, high=float("inf"))] * len(
+                    sensor_config.tank_volume_sensors
+                )
+            elif sensor_type==SENSOR_TYPE_SURFACE_SPECIES:
+                for species_id in sensor_config.surface_species_sensors:
+                    obs_space += [Box(low=0, high=float("inf"))] * len(
+                        sensor_config.surface_species_sensors[species_id]
+                    )
+            elif sensor_type==SENSOR_TYPE_NODE_BULK_SPECIES:
+                for species_id in sensor_config.bulk_species_node_sensors:
+                    obs_space += [Box(low=0, high=float("inf"))] * len(
+                        sensor_config.bulk_species_node_sensors[species_id]
+                    )
+            elif sensor_type==SENSOR_TYPE_LINK_BULK_SPECIES:
+                for species_id in sensor_config.bulk_species_link_sensors:
+                    obs_space += [Box(low=0, high=float("inf"))] * len(
+                        sensor_config.bulk_species_link_sensors[species_id]
+                    )
+            else: raise ValueError(
+                f"Invalid sensor type: {sensor_type} "
+                f"Valid sensor types are\n{valid_sensor_types()}"
+            )
 
         return flatten_space(Tuple(obs_space))
 
