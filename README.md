@@ -34,7 +34,7 @@ Unique features of EPyT-Control are the following:
 
 ## Installation
 
-EPyT-Control supports Python 3.9 - 3.14
+EPyT-Control supports Python 3.10 - 3.14
 
 ### PyPI
 
