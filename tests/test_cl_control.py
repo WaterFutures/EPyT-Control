@@ -106,7 +106,7 @@ class SimpleChlorineInjectionEnv(HydraulicControlEnv):
         lower_bound_violation_idx = nodes_quality < lower_cl_bound
         reward += np.sum(nodes_quality[lower_bound_violation_idx] - lower_cl_bound)
 
-        return reward
+        return float(reward)
 
 
 class SimpleChlorineInjectionMultiConfigEnv(MultiConfigHydraulicControlEnv):
@@ -161,7 +161,7 @@ class SimpleChlorineInjectionMultiConfigEnv(MultiConfigHydraulicControlEnv):
         lower_bound_violation_idx = nodes_quality < lower_cl_bound
         reward += np.sum(nodes_quality[lower_bound_violation_idx] - lower_cl_bound)
 
-        return reward
+        return float(reward)
 
 
 def test_cl_env():
