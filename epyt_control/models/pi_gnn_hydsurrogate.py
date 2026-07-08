@@ -33,15 +33,12 @@ from torch_geometric.nn.dense.linear import Linear
 from torch_scatter import scatter
 from tqdm import tqdm
 
-try:
-    from epyt_flow.simulation import ScenarioSimulator, ScadaData
-    from epyt_flow.data.networks import (
-        load_anytown, load_balerma,  load_hanoi, load_ltown_a, load_rural,
-    )
-except ImportError:
-    ScenarioSimulator = None  # type: ignore[misc]
-    ScenarioConfig = None  # type: ignore[misc]
-    ScadaData = None  # type: ignore[misc]
+
+from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants
+from epyt_flow.data.networks import (
+    load_anytown, load_balerma,  load_hanoi, load_ltown_a, load_rural,
+)
+
 
 # Map of built-in EPytFlow network names → loader functions
 EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE: Dict[str, Any] = {}
@@ -649,9 +646,9 @@ def _build_graph_core(topo, time_interval: float,
         elevs_np[i] = float(ninfo.get("elevation", 0.0))
         node_coords_list.append(ninfo.get("coord", (0.0, 0.0)))
         ntype = int(ninfo.get("type", 0))
-        if ntype == 1:     # Reservoir
+        if ntype == EpanetConstants.EN_RESERVOIR:     # Reservoir
             reservoir_indices.append(i)
-        elif ntype == 2:   # Tank
+        elif ntype == EpanetConstants.EN_TANK:   # Tank
             tank_indices.append(i)
 
     reservoirs_all = reservoir_indices + tank_indices
@@ -898,9 +895,6 @@ def _build_graph_from_epytflow(inp_file: str, scada_data) -> Tuple[_WDNGraph, to
     ``.inp`` file.  Pressures, demands and flows are read from the SCADA
     object; all topology is parsed via *epytflow* from the ``.inp``.
     """
-    if ScenarioSimulator is None:
-        raise ImportError("epyt_flow is required to load ScadaData")
-
     with ScenarioSimulator(f_inp_in=inp_file) as sim:
         topo = sim.get_topology()
         flow_units = sim.get_flow_units()
@@ -1098,8 +1092,6 @@ class PIGNNModel:
 
         """
         if isinstance(scada_data_or_path, str):
-            if ScadaData is None:
-                raise ImportError("epyt_flow is required to load ScadaData files")
             scada_data_or_path = ScadaData.load_from_file(scada_data_or_path)
 
         self._wdn_graph, self._gt_flows_raw = _build_graph_from_epytflow(self.inp_file, scada_data_or_path)
@@ -1125,9 +1117,6 @@ class PIGNNModel:
             Whether to randomize demands in the simulation.
 
         """
-        if ScenarioSimulator is None:
-            raise ImportError("epyt_flow is required to simulate from .inp")
-
         with ScenarioSimulator(f_inp_in=self.inp_file) as sim:
             sim.set_general_parameters(
                 simulation_duration=simulation_duration_sec,
@@ -1142,9 +1131,6 @@ class PIGNNModel:
             sim.set_demand_sensors(sensor_config.nodes)
             sim.set_flow_sensors(sensor_config.links)
             scada_data = sim.run_simulation()
-
-        file_out = os.path.splitext(os.path.basename(self.inp_file))[0].lower()
-        scada_data.save_to_file(os.path.join("tmp", f"{file_out}.epytflow_scada_data"))
 
         self._wdn_graph, self._gt_flows_raw = _build_graph_from_epytflow(self.inp_file, scada_data)
         self._reservoirs = self._wdn_graph.reservoirs
@@ -1512,12 +1498,6 @@ class PIGNNModel:
         for idx, res_idx in enumerate(self._reservoirs):
             heads[:, res_idx] = reservoir_heads[:, idx]
         self.load_from_arrays(heads, demands)
-
-        # Build temporary graph
-        #if scada_data is not None:
-        #    self.load_epytflow_scada(scada_data)
-        #else:
-        #    raise ValueError("Provide either scada_data or (heads, demands).")
 
         g = self._wdn_graph
         model = self.model
