@@ -24,6 +24,7 @@ Unique features of EPyT-Control are the following:
 - Wide variety of pre-defined actions (e.g. pump state actions, pump speed actons, valve state actions, species injection actions, etc.)
 - Implementation of classic control aglorithms such as PID and LQR controllers
 - Signal processing methods such as state estimation (e.g. Kalman filters) and event diagnosis
+- State-of-the-art (pre-trained) hydraulic surrogate models
 - High- and low-level interface
 - Object-orientated design that is easy to extend and customize
 
@@ -37,6 +38,7 @@ Unique features of EPyT-Control are the following:
     tut.basic_usage
     tut.create_env
     tut.pid_controller
+    tut.hyd_surrogate
 
 
 .. _tut.examples:
