@@ -1,17 +1,6 @@
 """
 This module provides an implementation of the physics informed graph neural network for a
 hydraulic surrogate model as proposed by Ashraf el al. (2024 - 2025).
-
-Typical usage
--------------
->>> from epyt_control.models import PIGNNModel
->>> model = PIGNNModel(inp_file="path_to_network.inp")
->>> model.load_epytflow_scada("path_to_scada.epytflow_scada_data")  # For training and test data
->>> model.prepare_data(train_ratio=0.6, val_ratio=0.2)
->>> model.build_model()
->>> model.train(n_epochs=3000)
->>> model.save_model("network.pt")  # Trained model can be loaded by calling model.load_model("network.pt")
->>> results = model.evaluate()
 """
 
 from __future__ import annotations
@@ -20,7 +9,7 @@ import datetime
 import os
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 
 import networkx as nx
 import numpy as np
@@ -35,12 +24,13 @@ from tqdm import tqdm
 
 
 from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants
+from epyt_flow.utils import download_if_necessary, get_temp_folder
 from epyt_flow.data.networks import (
     load_anytown, load_balerma,  load_hanoi, load_ltown_a, load_rural,
 )
 
 
-# Map of built-in EPytFlow network names → loader functions
+# Map of built-in EPytFlow network names -> loader functions
 EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE: Dict[str, Any] = {}
 try:
     EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE = {
@@ -234,7 +224,8 @@ class _PI_GNN(Module):
 
         for k in range(K):
             # f1
-            g = self.node(torch.cat((self.d_hat_nrm, self.d_star_nrm, self.reservoir_mask.float()), dim=-1))
+            g = self.node(torch.cat((self.d_hat_nrm, self.d_star_nrm, self.reservoir_mask.float()),
+                                    dim=-1))
             z = self.edge(torch.cat((self.q_tilde_nrm, self.q_hat_nrm), dim=-1))
             for gcn in self.gcn_aggrs:
                 g, z = gcn(g, self.edge_index, z)
@@ -277,8 +268,10 @@ class _PI_GNN(Module):
                     pump_ccs=self.pump_curve_coefs_nrm,
                     q_hat=self.q_hat_nrm, zeta=zeta,
                 )
-                self.q_hat_nrm[self.pump_mask_edges[:, 0] == 1, :] = self.q_tilde_nrm[self.pump_mask_edges[:, 0] == 1, :]
-                self.q_hat_nrm[self.pump_mask_edges[:, 0] == -1, :] = self.q_tilde_nrm[self.pump_mask_edges[:, 0] == -1, :]
+                self.q_hat_nrm[self.pump_mask_edges[:, 0] == 1, :] = \
+                    self.q_tilde_nrm[self.pump_mask_edges[:, 0] == 1, :]
+                self.q_hat_nrm[self.pump_mask_edges[:, 0] == -1, :] = \
+                    self.q_tilde_nrm[self.pump_mask_edges[:, 0] == -1, :]
                 self.d_hat_nrm = scatter(
                     self.q_hat_nrm, dim=0, index=self.edge_index[1:2, :].T, reduce="add"
                 )
@@ -415,10 +408,10 @@ def _load_dataset(wds: _WDNGraph, n_nodes: int, reservoirs: List[int], masked: b
 
 
 # ---------------------------------------------------------------------------
-# Unit conversion  (EPANET native → SI)
+# Unit conversion  (EPANET native -> SI)
 # ---------------------------------------------------------------------------
 
-def _get_si_conversions(flow_units: int) -> Dict[str, float]:
+def _get_si_conversions(flow_units: int, pressure_units: int) -> Dict[str, float]:
     """Multiplicative factors to convert .inp native units to SI (m, m³/s).
 
     EPANET flow-unit codes:
@@ -426,33 +419,42 @@ def _get_si_conversions(flow_units: int) -> Dict[str, float]:
         5=LPS, 6=LPM, 7=MLD, 8=CMH, 9=CMD 10=CMS  (SI)
     """
     _flow_to_cms: Dict[int, float] = {
-        0: 0.028316846592,     # CFS  → m³/s
-        1: 6.30902e-5,         # GPM  → m³/s
-        2: 0.04381264,         # MGD  → m³/s
-        3: 0.05261678,         # IMGD → m³/s
-        4: 0.01427641,         # AFD  → m³/s
-        5: 1e-3,               # LPS  → m³/s
-        6: 1e-3 / 60.0,       # LPM  → m³/s
-        7: 1e3 / 86400.0,     # MLD  → m³/s
-        8: 1.0 / 3600.0,      # CMH  → m³/s
-        9: 1.0 / 86400.0,     # CMD  → m³/s
-        10: 1.                # CMS  → m³/s
+        EpanetConstants.EN_CFS: 0.028316846592,     # CFS  -> m^3/s
+        EpanetConstants.EN_GPM: 6.30902e-5,         # GPM  -> m^3/s
+        EpanetConstants.EN_MGD: 0.04381264,         # MGD  -> m^3/s
+        EpanetConstants.EN_IMGD: 0.05261678,         # IMGD -> m^3/s
+        EpanetConstants.EN_AFD: 0.01427641,         # AFD  -> m^3/s
+        EpanetConstants.EN_LPS: 1e-3,               # LPS  -> m^3/s
+        EpanetConstants.EN_LPM: 1e-3 / 60.0,       # LPM  -> m^3/s
+        EpanetConstants.EN_MLD: 1e3 / 86400.0,     # MLD  -> m^3/s
+        EpanetConstants.EN_CMH: 1.0 / 3600.0,      # CMH  -> m^3/s
+        EpanetConstants.EN_CMD: 1.0 / 86400.0,     # CMD  -> m^3/s
+        EpanetConstants.EN_CMS: 1.                # CMS  -> m^3/s
     }
+
+    _pressure_to_head: Dict[int, float] = {
+        EpanetConstants.EN_PSI: 0.70324961490205,
+        EpanetConstants.EN_KPA: 0.10199773339984,
+        EpanetConstants.EN_METERS: 1.,
+        EpanetConstants.EN_BAR: 10.199773339984,
+        EpanetConstants.EN_FEET: 0.3048
+    }
+
     is_us = flow_units <= 4
     _ft2m = 0.3048
     return {
         "flow": _flow_to_cms.get(flow_units, 1.0),
-        "length": _ft2m if is_us else 1.0,                       # ft→m  | m→m
-        "diameter": 0.0254 if is_us else 1e-3,                   # in→m  | mm→m
-        "elevation": _ft2m if is_us else 1.0,                    # ft→m  | m→m
-        "pressure_to_head": _ft2m * 2.30666 if is_us else 1.0,   # PSI→m | m→m
-        "power": 745.69987 if is_us else 1.0,                    # HP→W  | W→W
-        "volume": _ft2m ** 3 if is_us else 1.0,                  # ft³→m³| m³→m³
+        "length": _ft2m if is_us else 1.0,                       # ft -> m  | m -> m
+        "diameter": 0.0254 if is_us else 1e-3,                   # in -> m  | mm -> m
+        "elevation": _ft2m if is_us else 1.0,                    # ft -> m  | m -> m
+        "pressure_to_head": _pressure_to_head.get(pressure_units, 1.0),
+        "power": 745.69987 if is_us else 1.0,                    # HP -> W  | W -> W
+        "volume": _ft2m ** 3 if is_us else 1.0,                  # ft^3 -> m^3| m^3 -> m^3
     }
 
 
 # ---------------------------------------------------------------------------
-# Graph builder from .inp file  (using epytflow topology)
+# Graph builder from .inp file  (using EPyT-Flow topology)
 # ---------------------------------------------------------------------------
 
 def _convert_to_bi_edges(edge_index, edge_attr=None):
@@ -604,12 +606,12 @@ def _compute_pump_abc(curve_points: list) -> Tuple[float, float, float]:
 
 def _build_graph_core(topo, time_interval: float,
                       heads: torch.Tensor, demands: torch.Tensor,
-                      flow_units: int = 5) -> _WDNGraph:
+                      flow_units: int, pressure_units: int) -> _WDNGraph:
     """Build a ``_WDNGraph`` from an already-loaded
     :class:`~epyt_flow.topology.NetworkTopology` and time-series tensors.
 
     Inputs (``heads``, ``demands``) must already be in **SI**
-    (meters, m³/s).  Topology-derived quantities (pipe lengths, diameters,
+    (meters, m^3/s).  Topology-derived quantities (pipe lengths, diameters,
     elevations, valve/pump/tank properties) are converted to SI internally
     according to ``flow_units``.
 
@@ -626,7 +628,7 @@ def _build_graph_core(topo, time_interval: float,
     * ``flows_gt`` - optional ``[T, 2*E, 1]`` flow targets kept outside
         ``edge_attr`` to avoid flow leakage into model inputs.
     """
-    conv = _get_si_conversions(flow_units)
+    conv = _get_si_conversions(flow_units, pressure_units)
 
     # ------------------------------------------------------------------
     #  Nodes
@@ -652,7 +654,7 @@ def _build_graph_core(topo, time_interval: float,
             tank_indices.append(i)
 
     reservoirs_all = reservoir_indices + tank_indices
-    elevs_np *= conv['elevation']                          # → m
+    elevs_np *= conv['elevation']                          # -> m
     elevs = torch.tensor(elevs_np, dtype=torch.float32)
     elevs = torch.nan_to_num(elevs, nan=0, posinf=0, neginf=0)
 
@@ -681,8 +683,8 @@ def _build_graph_core(topo, time_interval: float,
         roughnesses[j] = float(linfo.get("roughness_coeff", 0.0))
         link_type_arr[j] = int(linfo.get("type", 1))
         init_status_arr[j] = float(linfo.get("init_status", 1))
-    lengths *= conv['length']                              # → m
-    diameters *= conv['diameter']                           # → m
+    lengths *= conv['length']                              # -> m
+    diameters *= conv['diameter']                           # -> m
 
     edge_indices_orig = torch.tensor(all_edge_indices, dtype=torch.long)
 
@@ -726,10 +728,10 @@ def _build_graph_core(topo, time_interval: float,
         vinfo = topo.get_valve_info(vid)
         vtype = int(vinfo.get("type", 0))
         j = link_ids.index(vid)
-        if vtype == 3:    # PRV
+        if vtype == EpanetConstants.EN_PRV:    # PRV
             prv_idx[j] = True
             prv_settings[j] = float(vinfo.get("initial_setting", 0.0))
-        elif vtype == 6:  # FCV – not yet supported
+        elif vtype == EpanetConstants.EN_FCV:  # FCV – not yet supported
             _fcv_ids_found.append(vid)
     if _fcv_ids_found:
         raise NotImplementedError(
@@ -737,7 +739,7 @@ def _build_graph_core(topo, time_interval: float,
             f"({', '.join(_fcv_ids_found)}). "
             "Flow control valves are not yet supported."
         )
-    prv_settings *= conv['pressure_to_head']               # PSI→m (US) / m→m (SI)
+    prv_settings *= conv['pressure_to_head']
 
     # PRV node mask
     prv_nodes = edge_indices_orig[:, prv_idx]
@@ -784,7 +786,7 @@ def _build_graph_core(topo, time_interval: float,
         curve_id = str(pinfo.get("curve_id", ""))
 
         if curve_id and curve_id in topo.curves:
-            # HEAD pump with explicit curve – convert to SI
+            # HEAD pump with explicit curve - convert to SI
             _, curve_pts = topo.curves[curve_id]
             curve_pts_si = [(q * conv['flow'], h * conv['elevation'])
                            for q, h in curve_pts]
@@ -872,18 +874,17 @@ def _build_graph_core(topo, time_interval: float,
 
 def _build_graph(inp_file: str, heads: torch.Tensor, demands: torch.Tensor) -> _WDNGraph:
     """Build a ``_WDNGraph`` from an ``.inp`` file and time-series tensors."""
-    if ScenarioSimulator is None:
-        raise ImportError("epyt_flow is required to parse .inp files")
     with ScenarioSimulator(f_inp_in=inp_file) as sim:
         topo = sim.get_topology()
         flow_units = sim.get_flow_units()
+        pressure_units = sim.get_pressure_units()
         try:
             config = sim.get_scenario_config()
             time_interval = float(config.general_params.get("hydraulic_time_step", 1800))
         except (ValueError, Exception):
             time_interval = float(sim.epanet_api.get_hydraulic_time_step())
     return _build_graph_core(topo, time_interval, heads, demands,
-                             flow_units=flow_units)
+                             flow_units=flow_units, pressure_units=pressure_units)
 
 
 # ---------------------------------------------------------------------------
@@ -898,20 +899,21 @@ def _build_graph_from_epytflow(inp_file: str, scada_data) -> Tuple[_WDNGraph, to
     with ScenarioSimulator(f_inp_in=inp_file) as sim:
         topo = sim.get_topology()
         flow_units = sim.get_flow_units()
+        pressure_units = sim.get_pressure_units()
         try:
             config = sim.get_scenario_config()
             time_interval = float(config.general_params.get("hydraulic_time_step", 1800))
         except (ValueError, Exception):
             time_interval = float(sim.epanet_api.get_hydraulic_time_step())
 
-    conv = _get_si_conversions(flow_units)
+    conv = _get_si_conversions(flow_units, pressure_units)
     n_nodes = len(topo.get_all_nodes())
     n_edges = len(topo.get_all_links())
 
     # ---- Extract time-series from ScadaData (convert to SI) ----
     gt_pressures = scada_data.get_data_pressures()            # [T, N]  native pressure units
-    gt_demands = scada_data.get_data_demands() * conv['flow']            # → m³/s
-    gt_flows = scada_data.get_data_flows() * conv['flow']                # → m³/s
+    gt_demands = scada_data.get_data_demands() * conv['flow']            # -> m^3/s
+    gt_flows = scada_data.get_data_flows() * conv['flow']                # -> m^3/s
 
     T = gt_pressures.shape[0]
 
@@ -920,7 +922,7 @@ def _build_graph_from_epytflow(inp_file: str, scada_data) -> Tuple[_WDNGraph, to
         [float(topo.get_node_info(nid).get("elevation", 0.0))
          for nid in topo.get_all_nodes()],
         dtype=np.float32,
-    ) * conv['elevation']                                     # → m
+    ) * conv['elevation']                                     # -> m
     elevs_tile = elevs_np[None, :].repeat(T, axis=0)
 
     # Heads(m) = pressure × conversion + elevation(m)
@@ -935,7 +937,7 @@ def _build_graph_from_epytflow(inp_file: str, scada_data) -> Tuple[_WDNGraph, to
         (flows_t.unsqueeze(2), flows_t.unsqueeze(2) * -1), dim=1
     )
     graph = _build_graph_core(topo, time_interval, heads_t, demands_t,
-                              flow_units=flow_units)
+                              flow_units=flow_units, pressure_units=pressure_units)
     return graph, flows_bi_gt
 
 
@@ -980,15 +982,6 @@ class PIGNNModel:
         Path to the EPANET ``.inp`` network file.
     device : torch.device or str, optional
         Compute device (default: auto-detect CUDA).
-
-    Examples
-    --------
-    >>> m = PIGNNModel("network.inp")
-    >>> m.load_epytflow_scada("scada.epytflow_scada_data")
-    >>> m.prepare_data()
-    >>> m.build_model()
-    >>> m.train(n_epochs=3000)
-    >>> results = m.evaluate()
     """
 
     def __init__(self, inp_file: str, device: Optional[Union[str, torch.device]] = None):
@@ -1015,7 +1008,7 @@ class PIGNNModel:
         self._gt_flows_test: Optional[torch.Tensor] = None  # [T_test, 2*E, 1] test split
 
         # Hyperparameters (sensible defaults matching original paper)
-        self.batch_size: int = 96
+        self.batch_size: int = 48
         self.train_with_rand_demands: bool = True
         self.dem_dist: str = "uniform"
         self.dem_dist_fac: float = 0.5
@@ -1024,7 +1017,7 @@ class PIGNNModel:
         self.dia_dist_fac: float = 0.1
 
     @classmethod
-    def from_network(cls, network_name: str,
+    def from_network(cls, network_name: str, load_pretrained_model: bool = False,
                      device: Optional[Union[str, torch.device]] = None) -> "PIGNNModel":
         """Create a :class:`PIGNNModel` from a built-in EPytFlow network.
 
@@ -1034,6 +1027,10 @@ class PIGNNModel:
         ----------
         network_name : str
             One of: ``anytown``, ``balerma``, ``hanoi``, ``ltown_a``, ``rural``.
+        load_pretrained_model : bool, optional
+            If True, a pre-trained model will be downloaded and loaded.
+
+            The default is False.
         device : str or torch.device, optional
             Compute device.
 
@@ -1048,7 +1045,16 @@ class PIGNNModel:
                 f"Available: {sorted(EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE.keys())}"
             )
         config = EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE[name]()
-        return cls(inp_file=config.f_inp_in, device=device)
+        m = cls(inp_file=config.f_inp_in, device=device)
+
+        if load_pretrained_model is True:
+            url = f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/pretrained-models/{name}_pignn.pt"
+            f_in = os.path.join(get_temp_folder(), f"{name}_pignn.pt")
+            download_if_necessary(f_in, url)
+
+            m.load_model(f_in)
+
+        return m 
 
     # ------------------------------------------------------------------
     #  Data loading
@@ -1228,10 +1234,14 @@ class PIGNNModel:
 
         Parameters
         ----------
-        M_l : int   - Latent dimension (default 128).
-        I   : int   - Number of GNN layers (default 5).
-        n_epochs : int - Number of training epochs (default 1500).
-        verbose : bool - Verbosity
+        M_l : int
+            Latent dimension (default 128).
+        I   : int
+            Number of GNN layers (default 5).
+        n_epochs : int
+            Number of training epochs (default 1500).
+        verbose : bool
+            Verbosity
         """
         dia = self._compute_graph_diameter()
         n_iter = (dia // I + 5) if dia // I > 1 else 5
@@ -1269,13 +1279,23 @@ class PIGNNModel:
 
         Parameters
         ----------
-        n_epochs : int - Training epochs.
-        lr : float - Learning rate.
+        n_epochs : int
+            Number of training epochs.
+        lr : float
+            Learning rate.
         decay_step, decay_rate : LR scheduler params.
         rho, delta : Loss weighting coefficients.
-        grad_clip : float - Max gradient norm for clipping.
-        save_dir : str, optional - Where to save the model checkpoint.
-        verbose : bool - Print progress.
+        grad_clip : float
+            Max gradient norm for clipping.
+        save_dir : str, optional
+            Where to save the model checkpoint.
+            If None, the current working directory is used.
+
+            The default is None.
+        verbose : bool, optional
+            Print progress.
+
+            The default is True.
 
         Returns
         -------
@@ -1303,7 +1323,7 @@ class PIGNNModel:
         val_loader = DataLoader(val_ds, batch_size=self.batch_size, shuffle=True)
 
         if save_dir is None:
-            save_dir = os.path.join(os.getcwd(), "tmp", str(datetime.date.today()))
+            save_dir = os.path.join(os.getcwd(), str(datetime.date.today()))
         os.makedirs(save_dir, exist_ok=True)
         model_path = os.path.join(save_dir, "pi_gnn_model.pt")
         self._model_path = model_path
@@ -1321,14 +1341,19 @@ class PIGNNModel:
                 if self.train_with_rand_dias:
                     assert self.dia_dist in ("uniform", "normal"), "Invalid dia_dist; must be 'uniform' or 'normal'"
                     assert self.dia_dist_fac >= 0, "dia_dist_fac must be non-negative"
-                    batch.edge_attr[:, 9:10] = _add_noise_to_diameters(batch.edge_attr[:, 9:10], self.dia_dist_fac, dist=self.dia_dist)
-                    r = 10.667 * batch.edge_attr[..., 8:9] * torch.pow(batch.edge_attr[..., 10:11], -1.852) * torch.pow(batch.edge_attr[..., 9:10], -4.871)
+                    batch.edge_attr[:, 9:10] = _add_noise_to_diameters(batch.edge_attr[:, 9:10],
+                                                                       self.dia_dist_fac,
+                                                                       dist=self.dia_dist)
+                    r = 10.667 * batch.edge_attr[..., 8:9] * \
+                        torch.pow(batch.edge_attr[..., 10:11], -1.852) * \
+                            torch.pow(batch.edge_attr[..., 9:10], -4.871)
                     r = torch.nan_to_num(r, nan=0, posinf=0, neginf=0)
                     batch.edge_attr[:, 0:1] = r
                 if self.train_with_rand_demands:
                     assert self.dem_dist in ("uniform", "normal"), "Invalid dem_dist; must be 'uniform' or 'normal'"
                     assert self.dem_dist_fac >= 0, "dem_dist_fac must be non-negative"
-                    batch.x[:, 1:2] = _add_noise_to_demands(batch.x[:, 1:2], self.dem_dist_fac, dist=self.dem_dist)
+                    batch.x[:, 1:2] = _add_noise_to_demands(batch.x[:, 1:2], self.dem_dist_fac,
+                                                            dist=self.dem_dist)
 
                 batch = batch.to(self.device)
                 model.train()
@@ -1350,12 +1375,18 @@ class PIGNNModel:
                 vloss_list = []
                 for batch_val in val_loader:
                     if self.train_with_rand_dias:
-                        batch_val.edge_attr[:, 9:10] = _add_noise_to_diameters(batch_val.edge_attr[:, 9:10], self.dia_dist_fac, dist=self.dia_dist)
-                        r = 10.667 * batch_val.edge_attr[..., 8:9] * torch.pow(batch_val.edge_attr[..., 10:11], -1.852) * torch.pow(batch_val.edge_attr[..., 9:10], -4.871)
+                        batch_val.edge_attr[:, 9:10] = \
+                            _add_noise_to_diameters(batch_val.edge_attr[:, 9:10], self.dia_dist_fac,
+                                                    dist=self.dia_dist)
+                        r = 10.667 * batch_val.edge_attr[..., 8:9] * \
+                            torch.pow(batch_val.edge_attr[..., 10:11], -1.852) * \
+                                torch.pow(batch_val.edge_attr[..., 9:10], -4.871)
                         r = torch.nan_to_num(r, nan=0, posinf=0, neginf=0)
                         batch_val.edge_attr[:, 0:1] = r
                     if self.train_with_rand_demands:
-                        batch_val.x[:, 1:2] = _add_noise_to_demands(batch_val.x[:, 1:2], self.dem_dist_fac, dist=self.dem_dist)
+                        batch_val.x[:, 1:2] = _add_noise_to_demands(batch_val.x[:, 1:2],
+                                                                    self.dem_dist_fac,
+                                                                    dist=self.dem_dist)
 
                     batch_val = batch_val.to(self.device)
                     with torch.no_grad():
@@ -1368,7 +1399,8 @@ class PIGNNModel:
                     tqdm.write(f"Epoch {epoch:5d}  train={all_train_losses[-1]:.8f}  val={mean_val:.8f}")
 
                 # Checkpoint
-                state = {"epoch": epoch, "model": model.state_dict(), "optimizer": optimizer.state_dict()}
+                state = {"epoch": epoch, "model": model.state_dict(),
+                         "optimizer": optimizer.state_dict()}
                 torch.save(state, model_path)
 
         return {
@@ -1473,7 +1505,6 @@ class PIGNNModel:
         self,
         reservoir_heads: np.ndarray,
         demands: np.ndarray,
-        #scada_data: Optional[Any] = None,
         batch_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
@@ -1531,7 +1562,7 @@ class PIGNNModel:
     #  Predicting and computing gradients (no ground-truth required)
     # ------------------------------------------------------------------
 
-    def get_gradients_from_forward_pass(
+    def compute_gradients_from_forward_pass(
         self,
         reservoir_heads: np.ndarray,
         demands: np.ndarray,
@@ -1549,7 +1580,8 @@ class PIGNNModel:
         demands : numpy.ndarray
             Demands (in m^3/s) at every node.
         gradient_input : `str`, optional
-            Quantity of interest for the sensitivity analysis -- i.e., target variable for backpropagation.
+            Quantity of interest for the sensitivity analysis -- i.e.,
+            target variable for backpropagation.
             Must be either "demands" or "diameters".
 
             The default is "demands".
@@ -1606,9 +1638,12 @@ class PIGNNModel:
                 batch.x = torch.cat((batch.x[:, :1], input, batch.x[:, 2:]), dim=1)
             elif gradient_input == "diameters":
                 input = batch.edge_attr[:, 9:10].detach().clone().requires_grad_(True)
-                r = 10.667 * batch.edge_attr[..., 8:9] * torch.pow(batch.edge_attr[..., 10:11], -1.852) * torch.pow(input, -4.871)
+                r = 10.667 * batch.edge_attr[..., 8:9] * \
+                    torch.pow(batch.edge_attr[..., 10:11], -1.852) * \
+                        torch.pow(input, -4.871)
                 r = torch.nan_to_num(r, nan=0, posinf=0, neginf=0)
-                batch.edge_attr = torch.cat((r, batch.edge_attr[:, 1:9], input, batch.edge_attr[:, 10:]), dim=1)
+                batch.edge_attr = torch.cat((r, batch.edge_attr[:, 1:9], input,
+                                             batch.edge_attr[:, 10:]), dim=1)
             else:
                 raise ValueError("Invalid gradient_input; must be 'demands' or 'diameters'")
 
@@ -1627,7 +1662,8 @@ class PIGNNModel:
 
             grads = torch.zeros_like(output).unsqueeze(2).repeat(1, input.shape[0], 1)
             for i in range(output.shape[0]):
-                g = torch.autograd.grad(inputs=input, outputs=output[i], allow_unused=True, create_graph=True, retain_graph=True)[0]
+                g = torch.autograd.grad(inputs=input, outputs=output[i], allow_unused=True,
+                                        create_graph=True, retain_graph=True)[0]
                 if g is not None:
                     grads[i, :, 0:1] = g
 
@@ -1635,6 +1671,138 @@ class PIGNNModel:
 
             model.zero_grad()
 
+
+        return {
+            "heads_pred": torch.stack(torch.vstack(Y_hat_all).split(n_nodes)),
+            "demands_pred": torch.stack(torch.vstack(D_hat_all).split(n_nodes)),
+            "flows_pred": torch.stack(torch.vstack(F_hat_all).split(n_edges)),
+            "grads": torch.stack(Grads),
+        }
+
+    # ------------------------------------------------------------------
+    #  Computing gradient based on given target outputs
+    # ------------------------------------------------------------------
+
+    def compute_gradients(
+        self,
+        reservoir_heads: np.ndarray,
+        demands: np.ndarray,
+        gradient_input: str = "demands",  # "demands" or "diameters",
+        gradient_output: str = "heads",  # "flows" or "heads"
+        output_func: Callable = None,
+        n_samples: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run forward inference on given data and compute gradients based on a
+        custom function output function (e.g., loss function).
+
+        Parameters
+        ----------
+        reservoir_heads : numpy.ndarray
+            Heads at all reservoirs.
+        demands : numpy.ndarray
+            Demands (in m^3/s) at every node.
+        gradient_input : `str`, optional
+            Quantity of interest for the sensitivity analysis -- i.e.,
+            target variable for backpropagation.
+            Must be either "demands" or "diameters".
+
+            The default is "demands".
+        gradient_output : `str`, optional
+            Source for the sensitivity analysis -- i.e., what is backpropagates.
+            Must be either "flows" or "heads".
+
+            The default is "heads".
+        output_func : Callable,
+            Function (e.g., custom loss function) applied to the output.
+            Gradients will be computed through this function.
+
+            If None, the identity function will be used -- note that in this case,
+            this function behaves identical to 'compute_gradients_from_forward_pass'.
+
+            The default is None.
+        n_samples : int, optional
+            Number of timesteps to compute gradients for. Defaults to all.
+            Use a small value (e.g. 10-50) to speed up computation.
+
+        Returns
+        -------
+        dict with ``"heads_pred"``, ``"demands_pred"``, ``"flows_pred"``, ``"grads"``.
+        """
+        if self.model is None:
+            raise RuntimeError("Model not built.")
+
+        heads = np.zeros(demands.shape)
+        for idx, res_idx in enumerate(self._reservoirs):
+            heads[:, res_idx] = reservoir_heads[:, idx]
+        self.load_from_arrays(heads, demands)
+
+        g = self._wdn_graph
+        model = self.model
+
+        model.eval()
+        bs = 1
+        assert g.X is not None and g.edge_attr is not None
+        n_nodes = g.X.shape[1]
+        n_edges = g.edge_attr[0].shape[0]
+
+        T = g.X.shape[0] if n_samples is None else min(n_samples, g.X.shape[0])
+        g_slice = _WDNGraph(
+            X=g.X[:T],
+            edge_index=g.edge_index[:T],
+            edge_attr=g.edge_attr[:T],
+            reservoirs=g.reservoirs,
+        )
+        ds, _ = _load_dataset(g_slice, n_nodes, g.reservoirs, masked=True)
+        loader = DataLoader(ds, batch_size=bs, shuffle=False)
+
+        Y_hat_all, D_hat_all, F_hat_all, Grads = [], [], [], []
+
+        for batch in loader:
+            batch = batch.to(self.device)
+
+            # Create a proper leaf variable for the input we want to differentiate,
+            # spliced into batch BEFORE the forward pass so it IS in the compute graph.
+            if gradient_input == "demands":
+                input = batch.x[:, 1:2].detach().clone().requires_grad_(True)
+                batch.x = torch.cat((batch.x[:, :1], input, batch.x[:, 2:]), dim=1)
+            elif gradient_input == "diameters":
+                input = batch.edge_attr[:, 9:10].detach().clone().requires_grad_(True)
+                r = 10.667 * batch.edge_attr[..., 8:9] * \
+                    torch.pow(batch.edge_attr[..., 10:11], -1.852) * \
+                        torch.pow(input, -4.871)
+                r = torch.nan_to_num(r, nan=0, posinf=0, neginf=0)
+                batch.edge_attr = torch.cat((r, batch.edge_attr[:, 1:9], input,
+                                             batch.edge_attr[:, 10:]), dim=1)
+            else:
+                raise ValueError("Invalid gradient_input; must be 'demands' or 'diameters'")
+
+            _ = model(batch, r_iter=5, zeta=1e-12)
+
+            Y_hat_all.append(model.h_tilde.detach().cpu())
+            D_hat_all.append(model.d_tilde.detach().cpu())
+            F_hat_all.append(model.q_tilde.detach().cpu())
+
+            if gradient_output == "heads":
+                output = model.h_tilde  # heads
+            elif gradient_output == "flows":
+                output = model.q_tilde  # flows
+            else:
+                raise ValueError("Invalid gradient_output; must be 'heads' or 'flows'")
+
+            if output_func is not None:
+                output = output_func(output)
+
+            grads = torch.zeros_like(output).unsqueeze(2).repeat(1, input.shape[0], 1)
+            for i in range(output.shape[0]):
+                g = torch.autograd.grad(inputs=input, outputs=output[i], allow_unused=True,
+                                        create_graph=True, retain_graph=True)[0]
+                if g is not None:
+                    grads[i, :, 0:1] = g
+                    
+            Grads.append(grads.detach().cpu())
+
+            model.zero_grad()
 
         return {
             "heads_pred": torch.stack(torch.vstack(Y_hat_all).split(n_nodes)),
