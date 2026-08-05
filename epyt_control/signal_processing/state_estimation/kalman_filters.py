@@ -711,3 +711,319 @@ class TimeVaryingExtendedKalmanFilter(ExtendedKalmanFilter):
         self._t += 1
 
         return super().step(observation)
+    
+
+class EnsembleKalmanFilter(KalmanFilterBase):
+    """
+    Class implementing the Ensemble Kalman Filter (EnKF).
+
+    https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/Appendix-E-Ensemble-Kalman-Filters.ipynb
+    https://towardsdatascience.com/addressing-the-butterfly-effect-data-assimilation-using-ensemble-kalman-filter-9883d0e1197b/
+    https://www.math.umd.edu/~slud/RITF17/enkf-tutorial.pdf
+
+
+    Parameters
+    ----------
+    state_dim : `int`
+        Dimensionality of states.
+    obs_dim : `int`
+        Dimensionality of observations.
+    init_state : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+        Initial state.
+    measurement_func : `Callable[[numpy.ndarray], numpy.ndarray]`
+        Measurement function -- i.e. a function mapping a single state vector to an observation.
+    state_transition_func : `Callable[[numpy.ndarray], numpy.ndarray]`
+        State transition function -- i.e. a function avoiding a single state vector to the next time step.
+    ensemble_size : `int`, optional
+        Number of ensemble members used for representing the state distribution. 
+
+        The default is 100.
+    seed : `int`, optional
+        It can be set for reproducibility. 
+
+        The default is None.
+    init_state_uncertainty_cov : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, optional
+        Covariance matrix of the initial state uncertainty. - used for sampling the initial ensemble around `init_state`
+        If None, the identity matrix will be used.
+
+        The default is None.
+    measurement_uncertainty_cov : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, optional
+        Covariance matrix of the measurement/observation uncertainty.
+        If None, the identity matrix will be used.
+
+        The default is None.
+    system_uncertainty_cov : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, optional
+        Covariance matrix of the system uncertainty (process noise) -- added to every ensemble member after the state transition.
+        If None, the identity matrix will be used.
+
+        The default is None.
+
+    """
+    def __init__(self, state_dim: int, obs_dim: int, init_state: np.ndarray,
+                 measurement_func: Callable[[np.ndarray], np.ndarray],
+                 state_transition_func: Callable[[np.ndarray], np.ndarray],
+                 ensemble_size: int = 100,
+                 seed: int = None,
+                 init_state_uncertainty_cov: Optional[np.ndarray] = None,
+                 measurement_uncertainty_cov: Optional[np.ndarray] = None,
+                 system_uncertainty_cov: Optional[np.ndarray] = None):
+        super().__init__(state_dim=state_dim, obs_dim=obs_dim, init_state=init_state)
+
+
+        # TODO
+
+
+        if not callable(measurement_func):
+            raise TypeError("'measurement_func' must be callable -- i.e. mapping a given " +
+                            "system state (numpy.ndarray) to an observation (numpy.ndarray)")
+        
+        if not callable(state_transition_func):
+            raise TypeError("'state_transition_func' must be callable -- i.e. evolving a given " +
+                            "system state (numpy.ndarray) for one time step")
+        
+        if not isinstance(ensemble_size, int):
+            raise TypeError("'ensemble_size' must be an instance of 'int' " + 
+                            f"but not of '{type(ensemble_size)}'")
+        
+        if ensemble_size <= 0:
+            raise ValueError("'ensemble_size' must be > 0")
+        
+        if init_state_uncertainty_cov is not None:
+            if not isinstance(init_state_uncertainty_cov, np.ndarray):
+                raise TypeError("'init_state_uncertainty_cov' must be an instance of " + 
+                                "'numpy.ndarray' but not of" +
+                                f"'{type(init_state_uncertainty_cov)}'")
+            if init_state_uncertainty_cov.shape != (state_dim, state_dim):
+                raise ValueError("'init_state_uncertainty_cov' must be of shape " + 
+                                 f"(state_dim, state_dim) -- i.e. {(state_dim, state_dim)}." + 
+                                 f"But found {init_state_uncertainty_cov.shape}")
+            
+        if measurement_uncertainty_cov is not None:
+            if not isinstance(measurement_uncertainty_cov, np.ndarray):
+                raise TypeError("'measurement_uncertainty_cov' must be an instance of " + 
+                                "'numpy.ndarray' but not of" +
+                                f"'{type(measurement_uncertainty_cov)}'")
+            if measurement_uncertainty_cov.shape != (obs_dim, obs_dim):
+                raise ValueError("'measurement_uncertainty_cov' must be of shape " + 
+                                 f"(obs_dim, obs_dim) -- i.e. {(obs_dim, obs_dim)}." + 
+                                 f"But found {measurement_uncertainty_cov.shape}")
+            
+        if system_uncertainty_cov is not None:
+            if not isinstance(system_uncertainty_cov, np.ndarray):
+                raise TypeError("'system_uncertainty_cov' must be an instance of " + 
+                                "'numpy.ndarray' but not of" +
+                                f"'{type(system_uncertainty_cov)}'")
+            if system_uncertainty_cov.shape != (state_dim, state_dim):
+                raise ValueError("'system_uncertainty_cov' must be of shape " + 
+                                 f"(state_dim, state_dim) -- i.e. {(state_dim, state_dim)}." + 
+                                 f"But found {system_uncertainty_cov.shape}")
+            
+        self._measurement_func = measurement_func
+        self._state_transition_func = state_transition_func
+        self._N = ensemble_size
+        
+        if init_state_uncertainty_cov is None:
+            self._P = np.eye(state_dim)
+        else: 
+            self._P = init_state_uncertainty_cov
+
+        if measurement_uncertainty_cov is None: 
+            self._R = np.eye(obs_dim)
+        else: 
+            self._R = measurement_uncertainty_cov
+        
+        if system_uncertainty_cov is None: 
+            self._Q = np.eye(state_dim)
+
+        else: 
+            self._Q = system_uncertainty_cov
+
+        self._init_state_uncertainty_cov = np.copy(self._P)
+
+        if seed is None:
+            self._rng = np.random.default_rng()
+        else: 
+            self._rng = np.random.default_rng(seed)
+
+        # draw the initial ensemble by sampling around the initial state
+        self._ensemble = self._x + self._rng.multivariate_normal(
+            mean = np.zeros(self._state_dim), cov=self._P, size=self._N
+        )
+
+
+    @property
+    def measurement_func(self) -> Callable[[np.ndarray], np.ndarray]:
+        """
+        Returns the measurement function -- i.e. a function for mapping a
+        system state to an observation.
+
+        Returns
+        -------
+        Callable[[`numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_], `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_]
+            Measurement function.
+        """
+        return self._measurement_func
+    
+    @property
+    def state_transition_func(self) -> Callable[[np.ndarray], np.ndarray]:
+        """
+        Returns the state transition function -- i.e. a function evolving a
+        system state to the next time step.
+
+        Returns
+        -------
+        Callable[[`numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_], `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_]
+            State transition function.
+        """
+        return self._state_transition_func
+    
+    @property
+    def ensemble_size(self) -> int:
+        """
+        Returns the number of ensemble members.
+
+        Returns
+        -------
+        `int`
+            Ensemble size. 
+        """
+        return self._N
+    
+    @property
+    def ensemble(self) -> np.ndarray:
+        """
+        Returns the current ensemble -- shape (ensemble_size, state_dim).
+
+        Returns
+        -------
+        `numpy.ndarray`
+            Ensemble members. 
+        """
+        return np.copy(self._ensemble)
+    
+    @property
+    def measurement_uncertainty_cov(self) -> np.ndarray:
+        """
+        Returns the covariance matrix of the measurement/observation uncertainty.
+
+        Returns
+        -------
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Covariance matrix.
+        """
+        return np.copy(self._R)
+
+    @property
+    def system_uncertainty_cov(self) -> np.ndarray:
+        """
+        Returns the covariance matrix of the system uncertainty.
+
+        Returns
+        -------
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Covariance matrix.
+        """
+        return np.copy(self._Q)
+    
+    @property
+    def init_state_uncertainty_cov(self) -> np.ndarray:
+        """
+        Returns the covariance matrix of the initial state uncertainty.
+
+        Returns
+        -------
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Covariance matrix.
+        """
+        return np.copy(self._init_state_uncertainty_cov)
+
+    def __eq__(self, other) -> bool:
+        return super().__eq__(other) and \
+            self._measurement_func == other.measurement_func and \
+            self._state_transition_func == other.state_transition_func and \
+            self._N == other.ensemble_size and \
+            np.all(self._R == other.measurement_uncertainty_cov) and \
+            np.all(self._Q == other.system_uncertainty_cov) and \
+            np.all(self._init_state_uncertainty_cov == other.init_state_uncertainty_cov)
+
+    def __str__(self) -> str:
+        return super().__str__() +\
+            f" init_state_uncertainty_cov: {self._init_state_uncertainty_cov} " +\
+            f"measurement_func: {self._measurement_func} " +\
+            f"state_transition_func: {self._state_transition_func} " +\
+            f"ensemble_size: {self._N} " +\
+            f"measurement_uncertainty_cov: {self._R} system_uncertainty_cov: {self._Q}"
+
+
+        
+    def reset(self) -> None:
+        super().reset()
+
+        self._P = np.copy(self._init_state_uncertainty_cov)
+
+        # re-draw the ensemble around the (reset) initial state
+        self._ensemble = self._x + self._rng.multivariate_normal(
+            mean=np.zeros(self._state_dim), cov=self._P, size=self._N)
+
+    def step(self, observation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Predicts the current state (incl. its uncertainty) based on a given current observation.
+        Also, updates all other internal states of the Kalman filter.
+
+        Parameters
+        ----------
+        observation : `numpy.ndarray`
+            Current observation. 
+
+        Returns
+        -------
+        tuple[`numpy.ndarray`, `numpy.ndarray`]
+            Tuple of predicted system state and uncertainty covariance matrix.
+        """
+        if not isinstance(observation, np.ndarray):
+            raise TypeError("'observation' must be an instance of 'numpy.ndarray' " +
+                            f"but not of '{type(observation)}'")
+        if observation.shape != (self._obs_dim,):
+            raise ValueError("'observation' must be of shape (obs_dim,) -- " +
+                                f"i.e. {(self._obs_dim,)}. But found {observation.shape}")
+
+        # predict step: propagate every ensemble member through the state transition function
+        # add process noise ~ N(0, Q)
+        self._ensemble = np.array([self._state_transition_func(member) 
+                                   for member in self._ensemble])
+        self._ensemble += self._rng.multivariate_normal(
+            mean=np.zeros(self._state_dim), cov=self._Q, size=self._N
+        )
+
+        # prior (forecast) mean and covariance 
+        self._x = np.mean(self._ensemble, axis=0)
+        self._P = np.cov(self._ensemble, rowvar=False)
+
+        # map every ensemble into observation space: z_i = h(x_i) 
+        Z = np.array([self._measurement_func(member) for member in self._ensemble])
+        z_mean = np.mean(Z, axis=0)
+
+        # perturbation
+        perturbed_obs = observation + self._rng.multivariate_normal(
+            mean=np.zeros(self._obs_dim), cov=self._R, size=self._N
+        )
+
+        # estimate cross-covariance 
+        X_dev = self._ensemble - self._x
+        Z_dev = Z - z_mean
+        P_xz = X_dev.T.dot(Z_dev) / (self._N - 1)
+        P_zz = Z_dev.T.dot(Z_dev) / (self._N - 1) + self._R
+
+        # Kalman gain 
+        K = P_xz.dot(np.linalg.inv(P_zz))
+
+        # update ensemble members
+        innovations = perturbed_obs - Z
+        self._ensemble = self._ensemble + innovations.dot(K.T)
+
+        # posterior
+        self._x = np.mean(self._ensemble, axis=0)
+        self._P = np.cov(self._ensemble, rowvar=False)
+
+        return np.copy(self._x), np.copy(self._P)
+
