@@ -35,6 +35,16 @@ Issues = "https://github.com/WaterFutures/EPyT-Control/issues"
 [tool.setuptools.packages]
 find = {}
 
+[project.optional-dependencies]
+qualsurrogate = [
+    "torch-geometric>=2.6.1",
+    "torch-scatter",
+    "torch"
+]
+
+[dependency-groups]
+all = ["epyt-control[qualsurrogate]"]
+
 [tool.setuptools.dynamic]
 version = {attr = "epyt_control.VERSION"}
 readme = {file = "README.md", content-type = "text/markdown"}
