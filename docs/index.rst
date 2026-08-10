@@ -53,7 +53,8 @@ Examples
    examples/pid_control
    examples/pump_control
    examples/event_detection
-   
+   examples/quality_surrogate
+   examples/quality_surrogate_ex
 
 
 API Reference
