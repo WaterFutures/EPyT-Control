@@ -26,7 +26,7 @@ from tqdm import tqdm
 from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants
 from epyt_flow.utils import download_if_necessary, get_temp_folder
 from epyt_flow.data.networks import (
-    load_anytown, load_balerma,  load_hanoi, load_ltown_a, load_rural,
+    load_anytown,  load_hanoi, load_ltown_a,
 )
 
 
@@ -34,9 +34,8 @@ from epyt_flow.data.networks import (
 EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE: Dict[str, Any] = {}
 try:
     EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE = {
-        "anytown": load_anytown, "balerma": load_balerma,
+        "anytown": load_anytown,
         "hanoi": load_hanoi, "ltown_a": load_ltown_a,
-        "rural": load_rural,
     }
 except NameError:
     pass
@@ -1026,7 +1025,7 @@ class PIGNNModel:
         Parameters
         ----------
         network_name : str
-            One of: ``anytown``, ``balerma``, ``hanoi``, ``ltown_a``, ``rural``.
+            One of: ``anytown``, ``hanoi``, ``ltown_a``.
         load_pretrained_model : bool, optional
             If True, a pre-trained model will be downloaded and loaded.
 
