@@ -1487,7 +1487,7 @@ class PIGNNModel:
         D_star = torch.stack(torch.vstack(D_star_all).split(n_nodes))
         D_hat = torch.stack(torch.vstack(D_hat_all).split(n_nodes))
         F_star = self._gt_flows_test  # [T_test, 2*E, 1] stored at prepare_data time
-        F_hat = torch.stack(torch.vstack(F_hat_all).split(n_edges))
+        F_hat = torch.stack(torch.vstack(F_hat_all).split(n_edges))[:, :n_edges//2, :]
 
         print(f"Test loss: {np.mean(all_losses):.8f}")
 
@@ -1560,7 +1560,7 @@ class PIGNNModel:
         return {
             "heads_pred": torch.stack(torch.vstack(Y_hat_all).split(n_nodes)),
             "demands_pred": torch.stack(torch.vstack(D_hat_all).split(n_nodes)),
-            "flows_pred": torch.stack(torch.vstack(F_hat_all).split(n_edges)),
+            "flows_pred": torch.stack(torch.vstack(F_hat_all).split(n_edges))[:, :n_edges//2, :],
         }
 
     # ------------------------------------------------------------------
