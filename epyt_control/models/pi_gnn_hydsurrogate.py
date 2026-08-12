@@ -874,6 +874,9 @@ def _build_graph_core(topo, time_interval: float,
 def _build_graph(inp_file: str, heads: torch.Tensor, demands: torch.Tensor) -> _WDNGraph:
     """Build a ``_WDNGraph`` from an ``.inp`` file and time-series tensors."""
     with ScenarioSimulator(f_inp_in=inp_file) as sim:
+        if sim.epanet_api.getoption(EpanetConstants.EN_HEADLOSSFORM) != EpanetConstants.EN_HW:
+            raise ValueError("Unsupport head loss formula! Only Hazen-Williams is supported.")
+
         topo = sim.get_topology()
         flow_units = sim.get_flow_units()
         pressure_units = sim.get_pressure_units()
@@ -896,6 +899,9 @@ def _build_graph_from_epytflow(inp_file: str, scada_data) -> Tuple[_WDNGraph, to
     object; all topology is parsed via *epytflow* from the ``.inp``.
     """
     with ScenarioSimulator(f_inp_in=inp_file) as sim:
+        if sim.epanet_api.getoption(EpanetConstants.EN_HEADLOSSFORM) != EpanetConstants.EN_HW:
+            raise ValueError("Unsupport head loss formula! Only Hazen-Williams is supported.")
+
         topo = sim.get_topology()
         flow_units = sim.get_flow_units()
         pressure_units = sim.get_pressure_units()
