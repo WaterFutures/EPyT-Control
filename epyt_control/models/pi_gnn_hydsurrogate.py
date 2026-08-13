@@ -120,7 +120,7 @@ def _construct_heads_pp(h, q, r, edge_index, m_n_prv, m_e_pump, pump_ccs,
     return h, l_hat, J
 
 
-def _compute_net_flows_pp(h, r, edge_index, d, m_e_prv, m_e_pump, pump_ccs, q_hat=None, zeta=1e-32):
+def _compute_net_flows_pp(h, r, edge_index, d, m_e_prv, m_e_pump, pump_ccs, q_hat=None, zeta=1e-24):
     """Compute flows/demands from heads using hydraulic principles."""
     sndr = h[edge_index[0, :], :]
     rcvr = h[edge_index[1, :], :]
@@ -1363,7 +1363,7 @@ class PIGNNModel:
                 batch = batch.to(self.device)
                 model.train()
                 model.zero_grad()
-                _ = model(batch, r_iter=5, epoch=epoch, zeta=1e-12)
+                _ = model(batch, r_iter=5, epoch=epoch, zeta=1e-24)
                 loss = model.loss(rho=rho, delta=delta)
                 loss.backward()
                 epoch_losses.append(loss.detach().cpu().item())
@@ -1395,7 +1395,7 @@ class PIGNNModel:
 
                     batch_val = batch_val.to(self.device)
                     with torch.no_grad():
-                        _ = model(batch_val, r_iter=5, epoch=epoch, zeta=1e-12)
+                        _ = model(batch_val, r_iter=5, epoch=epoch, zeta=1e-24)
                     vloss_list.append(model.loss(rho=rho, delta=delta).detach().cpu().item())
 
                 mean_val = float(np.mean(vloss_list))
@@ -1475,7 +1475,7 @@ class PIGNNModel:
         for batch in test_loader:
             batch = batch.to(self.device)
 
-            y_hat = model(batch, r_iter=5, zeta=1e-12)
+            y_hat = model(batch, r_iter=5, zeta=1e-24)
             loss = model.loss(rho=0.1, delta=0.1)
             all_losses.append(loss.detach().cpu().item())
             Y_hat_all.append(y_hat.detach().cpu())
@@ -1552,7 +1552,7 @@ class PIGNNModel:
         for batch in loader:
             batch = batch.to(self.device)
 
-            y_hat = model(batch, r_iter=5, zeta=1e-12)
+            y_hat = model(batch, r_iter=5, zeta=1e-24)
             Y_hat_all.append(model.h_tilde.detach().cpu())
             D_hat_all.append(model.d_tilde.detach().cpu())
             F_hat_all.append(model.q_tilde.detach().cpu())
@@ -1652,7 +1652,7 @@ class PIGNNModel:
             else:
                 raise ValueError("Invalid gradient_input; must be 'demands' or 'diameters'")
 
-            _ = model(batch, r_iter=5, zeta=1e-12)
+            _ = model(batch, r_iter=5, zeta=1e-24)
 
             Y_hat_all.append(model.h_tilde.detach().cpu())
             D_hat_all.append(model.d_tilde.detach().cpu())
@@ -1782,7 +1782,7 @@ class PIGNNModel:
             else:
                 raise ValueError("Invalid gradient_input; must be 'demands' or 'diameters'")
 
-            _ = model(batch, r_iter=5, zeta=1e-12)
+            _ = model(batch, r_iter=5, zeta=1e-24)
 
             Y_hat_all.append(model.h_tilde.detach().cpu())
             D_hat_all.append(model.d_tilde.detach().cpu())
