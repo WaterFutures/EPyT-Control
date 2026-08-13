@@ -53,10 +53,10 @@ if __name__ == "__main__":
     heads, reservoir_idx, demands, flows = create_test_data_anytown()  # First axis in 'heads', 'demands', and 'flows' encode time!
 
     # Use the hydraulic surrogate model to predict flow rates and heads
-    hyd_pred = model.predict(reservoir_heads=heads[:, reservoir_idx],
-                             demands=demands)
-    heads_pred = hyd_pred["heads_pred"].detach().cpu().numpy().squeeze()  # Predicted pressure heads at every node
-    flows_pred = hyd_pred["flows_pred"].detach().cpu().numpy().squeeze()  # Predicted flow rates at every link
+    heads_pred, demands_pred, flows_pred = model.predict_as_numpy(reservoir_heads=heads[:, reservoir_idx],
+                                                                  demands=demands)
+    # Alternatively, you can also get the results as an epyt_flow.simulation.ScadaData instance
+    #scada_data = model.predict_as_scada_data(reservoir_heads=heads[:, reservoir_idx], demands=demands)
 
     # Compare predictions to ground truth
     plot_timeseries_data(np.abs(heads_pred - heads),

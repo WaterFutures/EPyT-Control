@@ -23,7 +23,8 @@ from torch_scatter import scatter
 from tqdm import tqdm
 
 
-from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants
+from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants, NetworkTopology, \
+    SensorConfig
 from epyt_flow.utils import download_if_necessary, get_temp_folder
 from epyt_flow.data.networks import (
     load_anytown,  load_hanoi, load_ltown_a,
@@ -350,6 +351,7 @@ class _PI_GNN(Module):
 @dataclass
 class _WDNGraph:
     """Simple container mirroring the original WDN_Graph."""
+    network_topo: NetworkTopology = None
     X: Optional[torch.Tensor] = None  # [T, N, F_node]
     edge_index: Optional[torch.Tensor] = None  # [T, 2, E]  or [2, E]
     edge_attr: Optional[torch.Tensor] = None  # [T, E, F_edge]
@@ -860,6 +862,7 @@ def _build_graph_core(topo, time_interval: float,
     X = torch.cat((X, base_demands, elevs_full), dim=-1)
 
     return _WDNGraph(
+        network_topo=topo,
         X=X,
         edge_index=edge_index_full,
         edge_attr=edge_attr_full,
@@ -1075,9 +1078,9 @@ class PIGNNModel:
 
         Parameters
         ----------
-        heads : ndarray, shape [T, N]
+        heads : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, shape [T, N]
             Hydraulic heads at every node for T timesteps.
-        demands : ndarray, shape [T, N]
+        demands : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, shape [T, N]
             Demands at every node (in m³/s).
 
         """
@@ -1090,14 +1093,14 @@ class PIGNNModel:
 
     def load_epytflow_scada(
         self,
-        scada_data_or_path: Union[str, Any],  # str or ScadaData
+        scada_data_or_path: Union[str, ScadaData],
     ) -> None:
         """
         Build graph data from EPytFlow ScadaData.
 
         Parameters
         ----------
-        scada_data_or_path : str or ScadaData
+        scada_data_or_path : str or `epyt_flow.simulation.ScadaData <https://epyt-flow.readthedocs.io/en/stable/epyt_flow.simulation.scada.html#epyt_flow.simulation.scada.scada_data.ScadaData>`_
             Either a path to a persisted ``.epytflow_scada_data`` file or an
             already-loaded ``ScadaData`` object.
 
@@ -1513,13 +1516,13 @@ class PIGNNModel:
         batch_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        Run forward inference on new data.
+        Runs forward inference on new data.
 
         Parameters
         ----------
-        reservoir_heads : numpy.ndarray
+        reservoir_heads : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
             Heads at all reservoirs.
-        demands : numpy.ndarray
+        demands : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
             Demands (in m^3/s) at every node.
 
         Returns
@@ -1563,6 +1566,76 @@ class PIGNNModel:
             "flows_pred": torch.stack(torch.vstack(F_hat_all).split(n_edges))[:, :n_edges//2, :],
         }
 
+    def predict_as_numpy(self, reservoir_heads: np.ndarray, demands: np.ndarray,
+                         batch_size: Optional[int] = None,) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Run forward inference on new data and returns the results as NumPy arrays.
+
+        Parameters
+        ----------
+        reservoir_heads : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Heads at all reservoirs.
+        demands : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Demands (in m^3/s) at every node.
+
+        Returns
+        -------
+        tuple[`numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_]
+            Triple of predicted heads, demands, and flow rates
+        """
+        pred = self.predict(reservoir_heads, demands, batch_size)
+
+        return (pred["heads_pred"].detach().cpu().numpy().squeeze(),
+                pred["demands_pred"].detach().cpu().numpy().squeeze() ,
+                pred["flows_pred"].detach().cpu().numpy().squeeze()) 
+
+    def predict_as_scada_data(self, reservoir_heads: np.ndarray, demands: np.ndarray,
+                              batch_size: Optional[int] = None,) -> ScadaData:
+        """
+        Run forward inference on new data and returns the results as a ScadaData object.
+
+        Parameters
+        ----------
+        reservoir_heads : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Heads at all reservoirs.
+        demands : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Demands (in m^3/s) at every node.
+
+        Returns
+        -------
+        `epyt_flow.simulation.ScadaData <https://epyt-flow.readthedocs.io/en/stable/epyt_flow.simulation.scada.html#epyt_flow.simulation.scada.scada_data.ScadaData>`_
+            Predicted results as an EPyT-Flow ``ScadaData`` instance.
+        """
+        heads_pred, demands_pred, flows_pred = self.predict_as_numpy(reservoir_heads, demands,
+                                                                     batch_size)
+
+        topo = self._wdn_graph.network_topo
+        node_elevation = np.array([topo.get_node_info(node_id)["elevation"]
+                                   for node_id in topo.get_all_nodes()]).reshape(1, -1)
+        pressures_pred = heads_pred - node_elevation.repeat(heads_pred.shape[0], axis=0)
+
+        links = [link_id for link_id, _ in topo.get_all_links()]
+        sensor_readings_time = np.array([int(self._wdn_graph.time_interval * t)
+                                         for t in range(0, heads_pred.shape[0])])
+        sensor_config = SensorConfig(nodes=topo.get_all_nodes(),
+                                     links=links,
+                                     valves=topo.get_all_valves(),
+                                     pumps=topo.get_all_pumps(),
+                                     tanks=[], bulk_species=[], surface_species=[],
+                                     demand_sensors=topo.get_all_nodes(),
+                                     flow_sensors=links,
+                                     pressure_sensors=topo.get_all_nodes(),
+                                     flow_unit=EpanetConstants.EN_CMS,
+                                     pressure_unit=EpanetConstants.EN_METERS)
+        
+        return ScadaData(sensor_config=sensor_config,
+                         network_topo=topo,
+                         warnings_code=np.zeros(heads_pred.shape[0]),
+                         sensor_readings_time=sensor_readings_time,
+                         pressure_data_raw=pressures_pred,
+                         flow_data_raw=flows_pred,
+                         demand_data_raw=demands_pred)
+
     # ------------------------------------------------------------------
     #  Predicting and computing gradients (no ground-truth required)
     # ------------------------------------------------------------------
@@ -1580,9 +1653,9 @@ class PIGNNModel:
 
         Parameters
         ----------
-        reservoir_heads : numpy.ndarray
+        reservoir_heads : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
             Heads at all reservoirs.
-        demands : numpy.ndarray
+        demands : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
             Demands (in m^3/s) at every node.
         gradient_input : `str`, optional
             Quantity of interest for the sensitivity analysis -- i.e.,
@@ -1703,9 +1776,9 @@ class PIGNNModel:
 
         Parameters
         ----------
-        reservoir_heads : numpy.ndarray
+        reservoir_heads : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
             Heads at all reservoirs.
-        demands : numpy.ndarray
+        demands : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
             Demands (in m^3/s) at every node.
         gradient_input : `str`, optional
             Quantity of interest for the sensitivity analysis -- i.e.,

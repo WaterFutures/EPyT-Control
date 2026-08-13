@@ -12,6 +12,12 @@ network based on given demands at nodes.
 For making predictions, the function
 :func:`~epyt_control.models.pi_gnn_hydsurrogate.PIGNNModel.predict` takes the reservoirs' heads and
 demands at every node as an input and outputs flow rates and pressures everywhere.
+For the users' convienice, there also exist a predict function (see :func:`~epyt_control.models.pi_gnn_hydsurrogate.PIGNNModel.predict_as_numpy`),
+which returns everything as NumPy arrays,
+and another one (see :func:`~epyt_control.models.pi_gnn_hydsurrogate.PIGNNModel.predict_as_scada_data`),
+which returns the results as an
+`epyt_flow.simulation.ScadaData <https://epyt-flow.readthedocs.io/en/stable/epyt_flow.simulation.scada.html#epyt_flow.simulation.scada.scada_data.ScadaData>`_
+instance.
 Furthermore, we can compute gradients w.r.t. to demands and the network topology
 (e.g., pipe diameter) -- see function
 :func:`~epyt_control.models.pi_gnn_hydsurrogate.PIGNNModel.compute_gradients`.
@@ -37,6 +43,23 @@ some popular networks -- those can be loaded by calling the static function
 - `Anytown <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Anytown.html>`_
 - `Hanoi <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Hanoi.html>`_
 - `L-Town (Area A) <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-LTown.html>`_
+- `BakRyan <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-BAK.html>`_
+- `Blacksburg <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-blacksburg.html>`_
+- `Fossolo <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Fossolo.html>`_
+- `Fourteen Pipe <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Fourteen-Pipe.html>`_
+- `Federally Owned Water Main system (FOWM) <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-FOWM.html>`_
+- `Jilin <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Jilin.html>`_
+- `KL <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-KL.html>`_
+- `Modena <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Modena.html>`_
+- `Nineteen Pipe <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Nineteen-Pipe.html>`_
+- `Modified Nineteen Pipe <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Modified-Nineteen-Pipe.html>`_
+- `New York City Tunnel <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-NYC-Tunnel.html>`_
+- `PA2 <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-PA2.html>`_
+- `Pescara Network <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-pescara.html>`_
+- `Two-Loop Network (TLN) <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-TLN.html>`_
+- `Two-Reservoir Network (TRN) <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-TRN.html>`_
+- `Zhi Jiang <https://waterfutures.github.io/WaterBenchmarkHub/benchmarks/network-Zhi-Jiang.html>`_
+
 
 .. code-block:: python
 
