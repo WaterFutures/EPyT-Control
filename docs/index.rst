@@ -53,7 +53,9 @@ Examples
    examples/pid_control
    examples/pump_control
    examples/event_detection
-
+   examples/hydraulic_surrogate_model
+   examples/hydraulic_surrogate_model_gradients
+   examples/train_hydraulic_surrogate_model
 
 
 API Reference
