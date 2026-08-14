@@ -717,11 +717,6 @@ class EnsembleKalmanFilter(KalmanFilterBase):
     """
     Class implementing the Ensemble Kalman Filter (EnKF).
 
-    https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/Appendix-E-Ensemble-Kalman-Filters.ipynb
-    https://towardsdatascience.com/addressing-the-butterfly-effect-data-assimilation-using-ensemble-kalman-filter-9883d0e1197b/
-    https://www.math.umd.edu/~slud/RITF17/enkf-tutorial.pdf
-
-
     Parameters
     ----------
     state_dim : `int`
@@ -769,8 +764,6 @@ class EnsembleKalmanFilter(KalmanFilterBase):
                  system_uncertainty_cov: Optional[np.ndarray] = None):
         super().__init__(state_dim=state_dim, obs_dim=obs_dim, init_state=init_state)
 
-
-        # TODO
 
 
         if not callable(measurement_func):
@@ -1024,6 +1017,346 @@ class EnsembleKalmanFilter(KalmanFilterBase):
         # posterior
         self._x = np.mean(self._ensemble, axis=0)
         self._P = np.cov(self._ensemble, rowvar=False)
+
+        return np.copy(self._x), np.copy(self._P)
+
+class UnscentedKalmanFilter(KalmanFilterBase):
+    """
+    Class implementing the Ensemble Kalman Filter (EnKF).
+
+    Parameters
+    ----------
+    state_dim : `int`
+        Dimensionality of states.
+    obs_dim : `int`
+        Dimensionality of observations.
+    init_state : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+        Initial state.
+    measurement_func : `Callable[[numpy.ndarray], numpy.ndarray]`
+        Measurement function -- i.e. a function mapping a single state vector to an observation.
+    state_transition_func : `Callable[[numpy.ndarray], numpy.ndarray]`
+        State transition function -- i.e. a function avoiding a single state vector to the next time step.
+    alpha: `float`, optional 
+        Spread of the sigma points around the mean -- usually a small positive value, 
+        e.g. 1e-3 <= alpha <= 1.
+
+        The default is 0.1.
+    beta: `float`, optional
+        Incorporates prior knowledge of the distribution -- beta=2 is optimal for 
+        Gaussian distributions
+
+        The default is 2.0
+    kappa: `float`, optional
+        Secondary scaling parameter -- usually set to 3 - state_dim or 0. 
+        If None, `3 - state_dim` will be used.
+
+        The default is None. 
+    init_state_uncertainty_cov : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, optional
+        Covariance matrix of the initial state uncertainty. 
+        If None, the identity matrix will be used.
+
+        The default is None.
+    measurement_uncertainty_cov : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, optional
+        Covariance matrix of the measurement/observation uncertainty.
+        If None, the identity matrix will be used.
+
+        The default is None.
+    system_uncertainty_cov : `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_, optional
+        Covariance matrix of the system uncertainty (process noise).
+        If None, the identity matrix will be used.
+
+        The default is None.
+
+    """
+
+    def __init__(self, state_dim: int, obs_dim: int, init_state: np.ndarray,
+                 measurement_func: Callable[[np.ndarray], np.ndarray],
+                 state_transition_func: Callable [[np.ndarray], np.ndarray],
+                 alpha: float = 0.1, beta: float = 2.0, kappa: Optional[float] = None, 
+                 init_state_uncertainty_cov: Optional[np.ndarray] = None, 
+                 measurement_uncertainty_cov: Optional[np.ndarray] = None,
+                 system_uncertainty_cov: Optional[np.ndarray] = None):
+        super().__init__(state_dim=state_dim, obs_dim=obs_dim, init_state=init_state)
+
+        if not callable(measurement_func):
+            raise TypeError("'measurement_func' must be callable -- i.e. mapping a given " +
+                            "system state (numpy.ndarray) to an observation (numpy.ndarray)")
+            
+        if not callable(state_transition_func):
+            raise TypeError("'state_transition_func' must be callable -- i.e. evolving a given " +
+                            "system state (numpy.ndarray) for one time step")
+        if not isinstance(alpha, float):
+            raise TypeError(f"'alpha' must be an instance of 'float' but not of '{type(alpha)}'")
+        if not isinstance(beta, float):
+            raise TypeError(f"'beta' must be an instance of 'float' but not of '{type(beta)}'" )
+        if kappa is not None and not isinstance(kappa, (int, float)):
+            raise TypeError("'kappa' must be an instance of 'int' or 'float' " +
+                            f"but not of '{type(kappa)}'")
+
+        if init_state_uncertainty_cov is not None:
+            if not isinstance(init_state_uncertainty_cov, np.ndarray):
+                raise TypeError("'init_state_uncertainty_cov' must be an instance of " + 
+                                "'numpy.ndarray' but not of" +
+                                f"'{type(init_state_uncertainty_cov)}'")
+            if init_state_uncertainty_cov.shape != (state_dim, state_dim):
+                raise ValueError("'init_state_uncertainty_cov' must be of shape " + 
+                                 f"(state_dim, state_dim) -- i.e. {(state_dim, state_dim)}." + 
+                                 f"But found {init_state_uncertainty_cov.shape}")
+            
+        if measurement_uncertainty_cov is not None:
+            if not isinstance(measurement_uncertainty_cov, np.ndarray):
+                raise TypeError("'measurement_uncertainty_cov' must be an instance of " + 
+                                "'numpy.ndarray' but not of" +
+                                f"'{type(measurement_uncertainty_cov)}'")
+            if measurement_uncertainty_cov.shape != (obs_dim, obs_dim):
+                raise ValueError("'measurement_uncertainty_cov' must be of shape " + 
+                                 f"(obs_dim, obs_dim) -- i.e. {(obs_dim, obs_dim)}." + 
+                                 f"But found {measurement_uncertainty_cov.shape}")
+            
+        if system_uncertainty_cov is not None:
+            if not isinstance(system_uncertainty_cov, np.ndarray):
+                raise TypeError("'system_uncertainty_cov' must be an instance of " + 
+                                "'numpy.ndarray' but not of" +
+                                f"'{type(system_uncertainty_cov)}'")
+            if system_uncertainty_cov.shape != (state_dim, state_dim):
+                raise ValueError("'system_uncertainty_cov' must be of shape " + 
+                                 f"(state_dim, state_dim) -- i.e. {(state_dim, state_dim)}." + 
+                                 f"But found {system_uncertainty_cov.shape}")
+            
+        self._measurement_func = measurement_func
+        self._state_transition_func = state_transition_func
+
+        self._alpha = alpha
+        self._beta = beta
+        # standard value 
+        self._kappa = kappa if kappa is not None else 3 - state_dim
+
+        self._I = np.eye(state_dim)
+
+        if init_state_uncertainty_cov is None:
+            self._P = self._I
+        else: 
+            self._P = init_state_uncertainty_cov
+
+        if measurement_uncertainty_cov is None:
+            self._R = np.eye(obs_dim)
+        else:
+            self._R = measurement_uncertainty_cov 
+
+        if system_uncertainty_cov is None:
+            self._Q = self._I 
+        else: 
+            self._Q = system_uncertainty_cov
+
+        self._init_state_uncertainty_cov = np.copy(self._P)
+
+        # pre/compute the weights 
+        n = self._state_dim
+        self._lambda_ = self._alpha ** 2 * (n + self._kappa) - n 
+
+        self._Wm = np.full(2 * n + 1, 1.0 / (2 * (n + self._lambda_)))
+        self._Wc = np.full(2 * n + 1, 1.0 / (2 * (n + self._lambda_)))
+        self._Wm[0] = self._lambda_ / (n + self._lambda_)
+        self._Wc[0] = self._lambda_ / (n + self._lambda_) + (1 - self._alpha ** 2 + self._beta)
+
+    @property
+    def measurement_func(self) -> Callable[[np.ndarray], np.ndarray]:
+        """
+        Returns the measurement function -- i.e. a function for mapping a
+        system state to an observation.
+
+        Returns
+        -------
+        Callable[[`numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_], `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_]
+            Measurement function.
+        """
+        return self._measurement_func
+    
+    @property
+    def state_transition_func(self) -> Callable[[np.ndarray], np.ndarray]:
+        """
+        Returns the state transition function -- i.e. a function evolving a
+        system state to the next time step.
+
+        Returns
+        -------
+        Callable[[`numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_], `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_]
+            State transition function.
+        """
+        return self._state_transition_func
+
+    @property
+    def alpha(self) -> float: 
+        """
+        Returns the spread parameter of the sigma points. 
+
+        Returns
+        -------
+        `float`
+            Alpha.
+        """
+        return self._alpha
+
+    @property
+    def beta(self) -> float:
+        """
+        Returns the parameter incorporating prior knowledge of the distribution
+
+        Returns
+        -------
+        `float`
+            Beta.
+        """
+        return self._beta
+
+    @property
+    def kappa(self) -> float:
+        """
+        Returns the secondary scaling parameter
+
+        Returns
+        -------
+        `float`
+            Kappa.
+        """
+        return self._kappa
+
+    @property
+    def measurement_uncertainty_cov(self) -> np.ndarray:
+        """
+        Returns the covariance matrix of the measurement/observation uncertainty.
+
+        Returns
+        -------
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Covariance matrix.
+        """
+        return np.copy(self._R)
+
+    @property
+    def system_uncertainty_cov(self) -> np.ndarray:
+        """
+        Returns the covariance matrix of the system uncertainty.
+
+        Returns
+        -------
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Covariance matrix.
+        """
+        return np.copy(self._Q)
+    
+    @property
+    def init_state_uncertainty_cov(self) -> np.ndarray:
+        """
+        Returns the covariance matrix of the initial state uncertainty.
+
+        Returns
+        -------
+        `numpy.ndarray <https://numpy.org/doc/stable/reference/generated/numpy.ndarray.html>`_
+            Covariance matrix.
+        """
+        return np.copy(self._init_state_uncertainty_cov)
+
+    def __eq__(self, other) -> bool:
+        return super().__eq__(other) and \
+            self._measurement_func == other.measurement_func and \
+            self._state_transition_func == other.state_transition_func and \
+            self._alpha == other.alpha and self._beta == other.beta and \
+            self._kappa == other.kappa and \
+            np.all(self._R == other.measurement_uncertainty_cov) and \
+            np.all(self._Q == other.system_uncertainty_cov) and \
+            np.all(self._init_state_uncertainty_cov == other.init_state_uncertainty_cov)
+
+    def __str__(self) -> str:
+        return super().__str__() +\
+            f" init_state_uncertainty_cov: {self._init_state_uncertainty_cov} " +\
+            f"measurement_func: {self._measurement_func} " +\
+            f"state_transition_func: {self._state_transition_func} " +\
+            f"alpha: {self._alpha} beta: {self._beta} kappa: {self._kappa}" +\
+            f"measurement_uncertainty_cov: {self._R} system_uncertainty_cov: {self._Q}"
+
+    def reset(self) -> None:
+        super().reset()
+
+        self._P = np.copy(self._init_state_uncertainty_cov)
+
+    def _generate_sigma_points(self, x: np.ndarray, P: np.ndarray) -> np.ndarray: 
+        """
+        Deterministically generates the 2*state_dim + 1 sigma points for the given
+        mean `x` and covariance `P`, using a Cholesky decompostion as the matrix
+        square root.
+        """
+        n = self._state_dim
+
+        L = np.linalg.cholesky((n + self._lambda_) * P)
+
+        sigmas = np.zeros((2 * n + 1, n))
+        sigmas[0] = x 
+        for i in range(n):
+            sigmas[i + 1] = x + L[:, i]
+            sigmas[n + i + 1] = x - L[:, i]
+
+        return sigmas 
+    
+    def step(self, observation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Predicts the current state (incl. its uncertainty) based on a given current observation.
+        Also, updates all other internal states of the Kalman filter.
+
+        Parameters
+        ----------
+        observation : `numpy.ndarray`
+            Current observation.
+        
+        Returns
+        -------
+        tuple[`numpy.ndarray`, `numpy.ndarray`]
+            Tuple of predicted system state and uncertainty covariance matrix. 
+        """
+
+        if not isinstance(observation, np.ndarray):
+            raise TypeError("'observation' must be an instance of 'numpy.ndarray' " + 
+                            f"but nor of '{type(observation)}'")
+        if observation.shape != (self._obs_dim,):
+            raise ValueError("'observation' must be of shape (obs_dim, ) -- " + 
+                             f"i.e. {(self._obs_dim,)}. But found {observation.shape}")
+
+        # generate sigma points from the current (posterior) mean and covariance 
+        sigmas = self._generate_sigma_points(self._x, self._P)
+
+        # Predict: propagate every sigma point through the (non-linear state) 
+        # transition function
+        sigmas_f = np.array([self._state_transition_func(s) for s in sigmas])
+
+        x_prior = np.dot(self._Wm, sigmas_f)
+        P_prior = np.copy(self._Q)
+        for i in range(2 * self._state_dim + 1):
+            y = sigmas_f[i] - x_prior
+            P_prior += self._Wc[i] * np.outer(y, y)
+
+        # Update: propagate the (already predicted) sigma points through the 
+        # (non-linear) measurement function
+        sigmas_h = np.array([self._measurement_func(s) for s in sigmas_f])
+
+        # unscented transform: recover the predicted measurement mean/covariance
+        z_pred = np.dot(self._Wm, sigmas_h)
+        Pz = np.copy(self._R)
+        for i in range(2 * self._state_dim + 1):
+            y = sigmas_h[i] - z_pred
+            Pz += self._Wc[i] * np.outer(y, y)
+
+        # cross-covariance between state and measurement sigma points 
+        Pxz = np.zeros((self._state_dim, self._obs_dim))
+        for i in range(2 * self._state_dim + 1):
+            dx = sigmas_f[i] - x_prior
+            dz = sigmas_h[i] - z_pred
+            Pxz += self._Wc[i] * np.outer(dx, dz)
+
+        # kalman gain and posterior update
+        K = Pxz.dot(np.linalg.inv(Pz))
+        y = observation - z_pred
+        self._x = x_prior + np.dot(K, y)
+        self._P = P_prior - K.dot(Pz).dot(K.T)
 
         return np.copy(self._x), np.copy(self._P)
 
