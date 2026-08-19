@@ -31,12 +31,17 @@ from epyt_flow.data.networks import (
 )
 
 
-# Map of built-in EPytFlow network names -> loader functions
-EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE: Dict[str, Any] = {}
+# Map of built-in network names -> loader functions
+NETWORKS_PIGNNHYDSURROGATE: Dict[str, Any] = {}
 try:
-    EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE = {
+    NETWORKS_PIGNNHYDSURROGATE = {
         "anytown": load_anytown,
         "hanoi": load_hanoi, "ltown_a": load_ltown_a,
+        "blacksburg": None, "fossolo": None,
+        "fourteen_pipe": None, "fowm": None, "jilin": None,
+        "modena": None, "nineteen_pipe": None,
+        "nyc_tunnel": None, "pescara": None,
+        "zhi_jiang": None
     }
 except NameError:
     pass
@@ -1034,7 +1039,22 @@ class PIGNNModel:
         Parameters
         ----------
         network_name : str
-            One of: ``anytown``, ``hanoi``, ``ltown_a``.
+            Must be on of the following:
+                
+                - "anytown"
+                - "hanoi"
+                - "ltown_a"
+                - "blacksburg"
+                - "fossolo"
+                - "fourteen_pipe"
+                - "fowm"
+                - "jilin"
+                - "modena"
+                - "nineteen_pipe"
+                - "nyc_tunnel"
+                - "pescara"
+                - "zhi_jiang"
+
         load_pretrained_model : bool, optional
             If True, a pre-trained model will be downloaded and loaded.
 
@@ -1047,12 +1067,12 @@ class PIGNNModel:
         PIGNNModel
         """
         name = network_name.lower()
-        if name not in EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE:
+        if name not in NETWORKS_PIGNNHYDSURROGATE:
             raise ValueError(
                 f"Unknown network {network_name!r}. "
-                f"Available: {sorted(EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE.keys())}"
+                f"Available: {sorted(NETWORKS_PIGNNHYDSURROGATE.keys())}"
             )
-        config = EPYTFLOW_NETWORKS_PIGNNHYDSURROGATE[name]()
+        config = NETWORKS_PIGNNHYDSURROGATE[name]()
         m = cls(inp_file=config.f_inp_in, device=device)
 
         if load_pretrained_model is True:
