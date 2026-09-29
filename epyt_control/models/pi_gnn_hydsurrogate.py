@@ -27,7 +27,7 @@ from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants, 
     SensorConfig
 from epyt_flow.utils import download_if_necessary, get_temp_folder
 from epyt_flow.data.networks import (
-    load_anytown,  load_hanoi, load_ltown_a,
+    load_anytown,  load_hanoi, load_ltown_a, load_inp
 )
 
 
@@ -37,11 +37,16 @@ try:
     NETWORKS_PIGNNHYDSURROGATE = {
         "anytown": load_anytown,
         "hanoi": load_hanoi, "ltown_a": load_ltown_a,
-        "blacksburg": None, "fossolo": None,
-        "fourteen_pipe": None, "fowm": None, "jilin": None,
-        "modena": None, "nineteen_pipe": None,
-        "nyc_tunnel": None, "pescara": None,
-        "zhi_jiang": None
+        "blacksburg": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/BLA.inp"),
+        "fossolo": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/fossolo.inp"),
+        "fourteen_pipe": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/fourteenpipes.inp"),
+        "fowm": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/FOWM.inp"),
+        "jilin": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/Jilin including water quality.inp"),
+        "modena": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/modena.inp"),
+        "nineteen_pipe": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/19 Pipe System.inp"),
+        "nyc_tunnel": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/new_york.inp"),
+        "pescara": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/PES.inp"),
+        "zhi_jiang": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/Zhi Jiang.inp")
     }
 except NameError:
     pass
@@ -1043,7 +1048,6 @@ class PIGNNModel:
                 
                 - "anytown"
                 - "hanoi"
-                - "ltown_a"
                 - "blacksburg"
                 - "fossolo"
                 - "fourteen_pipe"
