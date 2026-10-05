@@ -25,6 +25,7 @@ Unique features of EPyT-Control are the following:
 - Implementation of classic control aglorithms such as PID and LQR controllers
 - Signal processing methods such as state estimation (e.g. Kalman filters) and event diagnosis
 - State-of-the-art (pre-trained) hydraulic surrogate models
+- State-of-the-art water quality surrogate models
 - High- and low-level interface
 - Object-orientated design that is easy to extend and customize
 
@@ -39,6 +40,7 @@ Unique features of EPyT-Control are the following:
     tut.create_env
     tut.pid_controller
     tut.hyd_surrogate
+    tut.qual_surrogate
 
 
 .. _tut.examples:
@@ -50,12 +52,15 @@ Examples
    :caption: Jupyter notebooks
 
    examples/basic_usage
+   examples/chlorine_control
    examples/pid_control
    examples/pump_control
    examples/event_detection
    examples/hydraulic_surrogate_model
    examples/hydraulic_surrogate_model_gradients
    examples/train_hydraulic_surrogate_model
+   examples/quality_surrogate
+   examples/quality_surrogate_ex
 
 
 API Reference

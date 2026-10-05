@@ -36,6 +36,11 @@ Issues = "https://github.com/WaterFutures/EPyT-Control/issues"
 find = {}
 
 [project.optional-dependencies]
+qualsurrogate = [
+    "torch-geometric>=2.6.1",
+    "torch-scatter",
+    "torch"
+]
 hydsurrogate = [
     "torch-geometric>=2.6.1",
     "torch-scatter",
@@ -43,7 +48,7 @@ hydsurrogate = [
 ]
 
 [dependency-groups]
-all = ["epyt-control[hydsurrogate]"]
+all = ["epyt-control[qualsurrogate]", "epyt-control[hydsurrogate]"]
 
 [tool.setuptools.dynamic]
 version = {attr = "epyt_control.VERSION"}
