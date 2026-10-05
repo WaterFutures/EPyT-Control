@@ -91,6 +91,7 @@ For the training itself, training data can be automatically generate by calling
 :func:`~epyt_control.models.pi_gnn_hydsurrogate.PIGNNModel.prepare_data`.
 
 .. code-block:: python
+
     # Create new hydraulic surrogate model
     model = .....
 
@@ -117,6 +118,5 @@ More details and working examples can be found in the Jupyter Notebooks.
 
         pip install epyt-control[hydsurrogate]
 
-.. rubric::
 
 .. [#f1] I. Ashraf, A. Artelt, B. Hammer, "Scalable and Robust Physics-Informed Graph Neural Networks for Water Distribution Systems", IEEE International Joint Conference on Neural Networks, 2025 doi: 10.1109/IJCNN64981.2025.11229349

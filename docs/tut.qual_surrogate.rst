@@ -53,6 +53,5 @@ More details and working examples can be found on the Jupyter Notebooks.
 
         pip install epyt-control[qualsurrogate]
 
-.. rubric::
 
 .. [#f1] "MeGA-MP: Metric Graph Advection Message Passing", Janine Strotherm, Luca Hermes, André Artelt, Barbara Hammer, Transactions of Machine Learning Research (2026), https://openreview.net/forum?id=2aZPFrKYYb
