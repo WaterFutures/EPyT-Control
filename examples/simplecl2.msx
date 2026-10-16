@@ -1,0 +1,48 @@
+[TITLE]
+MSX Builder - Python Generated File
+
+[OPTIONS]
+AREA_UNITS  FT2
+RATE_UNITS  DAY
+SOLVER      EUL
+TIMESTEP    60
+RTOL        0.001
+ATOL        0.001
+  
+[SPECIES]
+BULK        CL2    MG  
+
+[COEFFICIENTS]
+PARAMETER   Kb     0.0
+PARAMETER   Kw     0.0
+
+
+[TERMS]
+Kf     1.5826e-4 * RE^0.88 / D
+
+[PIPE]
+RATE        CL2    -Kb*CL2 ;- (4/D)*Kw*Kf/(Kw+Kf)*CL2
+
+
+[TANK]
+RATE        CL2    -Kb*CL2
+
+[SOURCES]
+;CONC/MASS/FLOW/SETPOINT   <nodeID>      <specieID>     <strength>     (<tseriesID>)
+
+
+
+[QUALITY]
+GLOBAL          CL2   0.
+
+
+[DIFFUSIVITY]
+;CL2 0.01
+
+[PARAMETERS]
+
+
+[PATTERNS]
+
+[REPORT]
+SPECIE     CL2  YES
