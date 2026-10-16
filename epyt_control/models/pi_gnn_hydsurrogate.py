@@ -31,22 +31,30 @@ from epyt_flow.data.networks import (
 )
 
 
+def load_inp_from_url(url: str) -> ScenarioConfig:
+    inp_name = os.path.basename(url)
+    f_local_inp = os.path.join(get_temp_folder(), inp_name)
+
+    download_if_necessary(f_local_inp, url)
+    return load_inp(f_local_inp)
+
+
 # Map of built-in network names -> loader functions
 NETWORKS_PIGNNHYDSURROGATE: Dict[str, Any] = {}
 try:
     NETWORKS_PIGNNHYDSURROGATE = {
         "anytown": load_anytown,
         "hanoi": load_hanoi, "ltown_a": load_ltown_a,
-        "blacksburg": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/BLA.inp"),
-        "fossolo": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/fossolo.inp"),
-        "fourteen_pipe": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/fourteenpipes.inp"),
-        "fowm": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/FOWM.inp"),
-        "jilin": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/Jilin including water quality.inp"),
-        "modena": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/modena.inp"),
-        "nineteen_pipe": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/19 Pipe System.inp"),
-        "nyc_tunnel": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/new_york.inp"),
-        "pescara": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/PES.inp"),
-        "zhi_jiang": lambda: load_inp(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/Zhi Jiang.inp")
+        "blacksburg": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/BLA.inp"),
+        "fossolo": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/fossolo.inp"),
+        "fourteen_pipe": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/fourteenpipes.inp"),
+        "fowm": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/FOWM.inp"),
+        "jilin": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/Jilin including water quality.inp"),
+        "modena": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/modena.inp"),
+        "nineteen_pipe": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/19 Pipe System.inp"),
+        "nyc_tunnel": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/new_york.inp"),
+        "pescara": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/PES.inp"),
+        "zhi_jiang": lambda: load_inp_from_url(f"https://raw.githubusercontent.com/WaterFutures/EPyT-Control/refs/heads/main/networks/Zhi Jiang.inp")
     }
 except NameError:
     pass
