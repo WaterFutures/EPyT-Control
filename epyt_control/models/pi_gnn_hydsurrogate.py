@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 
 from epyt_flow.simulation import ScenarioSimulator, ScadaData, EpanetConstants, NetworkTopology, \
-    SensorConfig
+    SensorConfig, ScenarioConfig
 from epyt_flow.utils import download_if_necessary, get_temp_folder
 from epyt_flow.data.networks import (
     load_anytown,  load_hanoi, load_ltown_a, load_inp
