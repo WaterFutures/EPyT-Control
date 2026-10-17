@@ -143,11 +143,10 @@ def compute_deltas_cpu(cumulative, l, delta_ts, delta_xs=None, start_t=None):
                     # (maybe we can skip the first interation completely?)
                     if x == t:
                         if c1 == c2:
-                            delta_ts[b, t] = 1 # if c1 > 0 else -1
+                            delta_ts[b, t] = -1 # if c1 > 0 else -1
                             break
                         continue
 
-                    # print(c1, c2, (c2 - c1), cumulative[b, t])
                     if c2 == 0:
                         #delta_ts[b, t] = -2
                         #break
@@ -156,8 +155,6 @@ def compute_deltas_cpu(cumulative, l, delta_ts, delta_xs=None, start_t=None):
                     if np.sign(c1) != np.sign(c2):
                         alpha = c2 / (c2 - c1)
                         interpolated_x = x - alpha
-                        #print(t, '\t', np.sign(c2) * (t - interpolated_x)
-                        #      )
                         if c2 > 0:
                             sign = 1
                         elif c2 == 0:
@@ -208,7 +205,7 @@ def compute_backward_transit_times_fast(l, v, dt, start_t=None, return_sl=True):
     delta_ts_zeros = np.full((B, T+1), np.nan, dtype=np.float32)
     compute_deltas_cpu(cumulative, l * 0, delta_ts_zeros, start_t=start_t)
     
-    sl_mask = np.abs(delta_ts_zeros) < np.nan_to_num(np.abs(delta_ts), nan=np.inf)
+    sl_mask = np.abs(delta_ts_zeros) < np.nan_to_num(np.abs(delta_ts), nan=T+1)
     
     transit_steps = np.where(sl_mask, delta_ts_zeros, delta_ts)
     transit_times = transit_steps * dt

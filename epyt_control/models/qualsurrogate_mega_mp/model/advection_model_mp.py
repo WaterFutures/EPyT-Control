@@ -1,9 +1,36 @@
 import numpy as np
 import torch
-from torch_scatter import scatter_min
+from torch_geometric.nn import MessagePassing
 from tqdm.auto import tqdm
 
 from ..modules.torch_advection import AdvectionModuleGridSampleDynamic
+
+
+class AdvectionLayer(MessagePassing):
+    
+    def __init__(self, advection_op, **kwargs):
+        super().__init__(aggr='sum', node_dim=0, **kwargs)
+        self.advection_op = advection_op
+
+    def message(self, x_i, x_j, warp_map, weight, sl_mask):
+        adv_x_i = self.advection_op(x_i, warp_map).squeeze(-1)
+        adv_x_j = self.advection_op(x_j, warp_map).squeeze(-1)
+
+        self.msg = torch.where(sl_mask, adv_x_i, adv_x_j) * weight
+            
+        return self.msg
+    
+    def forward(self, X, edge_index, warp_map, weights, sl_mask, edge_mask):
+        edge_ids = edge_mask.nonzero(as_tuple=True)[0]
+        sl_mask = sl_mask[edge_ids].bool()
+
+        warp_map = -warp_map[edge_ids].abs()
+        edge_index = edge_index[:, edge_ids]
+        weights = weights[edge_ids]
+        
+        agg = self.propagate(edge_index, x=X.unsqueeze(-1), warp_map=warp_map, weight=weights, sl_mask=sl_mask)
+
+        return agg
 
 
 class AdvectionModelMP(torch.nn.Module):
@@ -15,152 +42,136 @@ class AdvectionModelMP(torch.nn.Module):
         super().__init__(**kwargs)
         # The maximum number of message passing rounds. More message-passing
         # rounds are required in areas of low flow to achieve high accuracy.
+        self.time_warp = AdvectionModuleGridSampleDynamic(interpolation_mode='nearest')
+        self.solved_prop = AdvectionLayer(AdvectionModuleGridSampleDynamic(interpolation_mode='bilinear'))
         self.max_msg_passing_rounds = max_msg_passing_rounds
         self.advection_mpnn = mp_layer
         self.constant_history = constant_history
         self.progress = progress
         self.adaptive_steps = adaptive_steps
         self.track_active_edges = track_active_edges
-        self.debug_info = {}    
+        self.debug_info = {}
 
-    @torch.no_grad()
-    def aggregated_time(self, n_nodes, Tau, edge_mask, edge_index, delay_steps, agg_time=None, sl_mask=None):
-        snd, rec = edge_index[:, edge_mask]
-        delay_steps = delay_steps[edge_mask]
-        n_edges = len(edge_mask)
-        n_time = delay_steps.shape[1]
-        time_warp = AdvectionModuleGridSampleDynamic(interpolation_mode='bilinear')
+    def track_solved_edges(self, warp_map, cT, edge_mask, edge_index, time_unsolved, sl_mask,
+                           weights):
+        time_unsolved = self.solved_prop(time_unsolved, edge_index, -warp_map.abs(), weights,
+                                         sl_mask, edge_mask)
+        time_unsolved[:,:cT] = 0.
         
-        if agg_time is None:
-            edge_age = torch.zeros(n_edges, n_time, device=delay_steps.device)
-            edge_age[edge_mask] = delay_steps.abs()
-            return (edge_age, edge_age)
-            
-        cum_edge_age, edge_age = agg_time
-        time = -delay_steps
+        edge_unresolved = self.solved_prop.msg
+        
+        edge_ids = edge_mask.nonzero(as_tuple=True)[0]
+        edge_mask.index_copy_(0, edge_ids, edge_mask[edge_ids] & (edge_unresolved[:, cT:].amax(dim=1) > 0.001))
+        
+        return time_unsolved, edge_unresolved, edge_mask
 
-        node_age_new = torch.zeros(n_nodes, n_time, device=delay_steps.device) + 1e10
-        edge_age_masked = edge_age[edge_mask]
-        node_age_new, _ = scatter_min(edge_age_masked + 1e10 * (time < 0).float(), rec, 0, out=node_age_new)
-        node_age_new, _ = scatter_min(edge_age_masked + 1e10 * (time >= 0).float(), snd, 0, out=node_age_new)
-
-        snd_node_age = torch.where(time >= 0, node_age_new[snd], node_age_new[rec])
-        sl = sl_mask[edge_mask].bool()
-        snd_node_age[sl] = torch.where(time >= 0, node_age_new[rec], node_age_new[snd])[sl]
-        edge_age[edge_mask] = time_warp(snd_node_age[...,None], -time.abs())[...,0]
-
-        return (cum_edge_age + edge_age, edge_age)
-    
     def create_initial_edge_mask(self, edge_index):
         return torch.ones(edge_index.shape[1], dtype=bool, device=edge_index.device)
         
     def set_flow_field(self, flows, delay_steps):
         self.flows = flows
         self.delay_steps = -delay_steps
-
-    def set_step_flow_params(self, step):
-        self._step_flows = self.flows[:,:step]
-        self._step_delay_steps = self.delay_steps[:,:step]
-        self._step_sl_mask = self.sl_mask[:,:step]
-        self._step_xs_map = None
-        if self.xs_map is not None:
-            self._step_xs_map = self.xs_map[:,:step]
     
-    def set_sl_mask(self, sl_mask):
-        self.sl_mask = sl_mask
+    def _prepare_kwargs(self, kwargs, n_edges):
+        if not kwargs:
+            return kwargs
+
+        result = {}
+
+        for name, value in kwargs.items():
+            if torch.is_tensor(value) and value.ndim > 0 and value.shape[0] == n_edges:
+                value = torch.cat((value, value), dim=0)
+
+            result[name] = value
+
+        return result
     
     def forward(
-            self, x, edge_index, flows, delay_steps, sl_mask, Tau, n_steps=1, boundary_values=None, boundary_index=None, **kwargs
-        ):
-        xT = x.clone() # save all results
-        average_steps = 0
+            self, x, edge_index, flows, delay_steps, sl_mask, Tau, n_steps=1, boundary_values=None,
+            boundary_index=None, **kwargs):
         n_nodes, cT = x.shape[:2]
         edge_passes = 0
         edges_active = []
         agg_times = []
         aggs_all = []
-        self.node_time_prev = None
+        sl_mask = sl_mask[:,:cT+Tau].bool()
 
-        self.flows = flows
-        self.delay_steps = -delay_steps
-        self.sl_mask = sl_mask
-        self.xs_map = kwargs.pop('xs_map')
+        steps_to_hist = torch.nn.functional.pad(torch.arange(1, Tau + 1, device=x.device), (cT, 0)).unsqueeze(0)
 
-        step = 0
-        output_steps = cT + Tau * n_steps
+        bc_mask = x.new_zeros(n_nodes)
+        if boundary_index is not None:
+            bc_mask[boundary_index] = 1.
         
-        while x.shape[1] < output_steps:
-        # for step in range(n_steps):
-            if self.adaptive_steps:
-                Tau = self.delay_steps.abs().min().int()
-            self.set_step_flow_params(cT + Tau)
-            time_active = self.create_initial_edge_mask(edge_index)
-            
-            agg_time, masking = None, None
-            
-            agg1 = torch.nn.functional.pad(x.clone(), (0,0,0,Tau,0,0))
-            aggs = agg1.clone()
+        flows = flows[:,:cT+Tau]
+        time_valid = torch.zeros_like(flows)
+        degrees = torch.bincount(edge_index.reshape(-1), minlength=n_nodes).to(flows.dtype)
 
-            if boundary_values is not None:
-                assert boundary_index is not None
-                start_idx = 0 if not self.constant_history else step*Tau
-                agg1[boundary_index] = boundary_values[:,start_idx:agg1.shape[1]]
+        agg1 = torch.nn.functional.pad(x.clone(), (0,0,0,Tau,0,0))
+        aggs = agg1.clone()
+        
+        agg_time = None
+        time_unsolved = torch.zeros_like(agg1[:,:,0])
+        time_unsolved[:,:cT] = 0.
+        time_unsolved[:,cT:] = 1.
+        warp_map = -delay_steps[:,:cT+Tau]
+
+        if boundary_values is not None:
+            assert boundary_index is not None
+            agg1[boundary_index] = boundary_values[:,:cT+Tau]
+            time_unsolved[boundary_index] = 0.
+        
+        aggs_all = [agg1.detach()]
+        
+        if self.progress:
+            progress = tqdm(total=100)
+
+        self.weights = self.advection_mpnn._compute_weights(
+            n_nodes, edge_index, flows, sl_mask, degrees, eps=1e-10
+        )
+        bi_edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
+        bi_weights = torch.cat(self.weights, dim=0)
+        bi_warp_map = warp_map.repeat(2, 1)
+        bi_sl_mask = sl_mask.repeat(2, 1)
+        kwargs = self._prepare_kwargs(kwargs, flows.shape[0])
+        time_active = self.create_initial_edge_mask(bi_edge_index)
+        time_active_single = self.create_initial_edge_mask(edge_index)
+        
+        
+        for i in range(self.max_msg_passing_rounds):
+            agg1 = self.advection_mpnn(agg1, bi_edge_index, bi_warp_map, bi_sl_mask, time_active,
+                                       bi_weights, time_valid=time_valid, degrees=degrees, **kwargs)
+            
+            time_unsolved, edge_unresolved, time_active = self.track_solved_edges(bi_warp_map, cT,
+                                                                                  time_active,
+                                                                                  bi_edge_index,
+                                                                                  time_unsolved,
+                                                                                  bi_sl_mask,
+                                                                                  bi_weights)
                 
-            total_ts = cT + Tau
-            ct_mask = torch.ones(total_ts, 1, device=x.device)
-            ct_mask[:cT].zero_()
-            
-            aggs_all = [agg1.detach()]
-            
+            # Set zeros at injection node, this is a dirichlet boundary condition and we now the function value
+            # Note: This is not universally true, if we inject mass then the masses should mix at 
+            # the boundary condition too (TODO: Make a parameter for this)
+            if boundary_index is not None:
+                agg1[boundary_index] *= 0
+                
+            agg1[:, :cT].zero_()
+            torch.nan_to_num_(agg1) # Prevent explosions in early training
+
             if self.progress:
-                progress = tqdm(total=100)
+                progress.n = np.round((1-time_active.float().mean().item()) * 100., decimals=2)
+                progress.refresh()
 
-            for i in range(self.max_msg_passing_rounds):
+            aggs += agg1
 
-                if not time_active.any():
-                    if self.progress:
-                        progress.set_description(f'Total iterations: {i}')
-                    break
-
-                flows = self._step_flows
-                warp_map = self._step_delay_steps
-                sl_mask = self._step_sl_mask
-                xs_map = self._step_xs_map
-                
-                agg1 = self.advection_mpnn(agg1, edge_index, flows, warp_map, sl_mask, time_active, xs_map=xs_map, **kwargs)
-                # Compute how much time passes for each edge (for efficiency reasons)
-                if self.track_active_edges:
-                    agg_time = self.aggregated_time(n_nodes, Tau, time_active, edge_index, warp_map, agg_time, sl_mask)
-                    time_active = torch.logical_and(time_active, (agg_time[0].abs() <= (Tau+1)).any(1))
-
-                # Set zeros at injection node, this is a dirichlet boundary condition and we now the function value
-                # Note: This is not universally true, if we inject mass then the masses should mix at 
-                # the boundary condition too (TODO: Make a parameter for this)
-                if boundary_index is not None:
-                    agg1[boundary_index] *= 0
-                    
-                agg1 = agg1 * ct_mask
-
+            if not time_active.any():
                 if self.progress:
-                    progress.n = np.round((agg_time[0].abs() >= Tau).float().mean().item() * 100., decimals=2)
-                    progress.refresh()
-
-                agg1 = torch.nan_to_num(agg1) # Prevent explosions in early training
-                aggs += agg1
-            
-            if self.progress:
-                progress.close()   
-            average_steps += i
-            x_new = aggs
-            xT = x_new
-            
-            if boundary_values is not None:
-               xT[boundary_index] = boundary_values[:,start_idx:xT.shape[1]]
-            if self.constant_history:
-                x = xT[:,(step+1)*Tau:]
-            else:
-                x = xT
-                cT = cT + Tau
-            step += 1
-            
-        return xT, edge_passes, edges_active, agg_times, aggs_all
+                    progress.set_description(f'Total iterations: {i}')
+                break
+        
+        if self.progress:
+            progress.close()
+        
+        if boundary_values is not None:
+            aggs[boundary_index] = boundary_values[:,:aggs.shape[1]]
+        print(i)
+        return aggs, edge_passes, edges_active, agg_times, aggs_all

@@ -27,11 +27,16 @@ class AdvectionReactionLayer(AdvectionLayer):
 
     def message(self, x_i, x_j, warp_map, weight, sl_mask, edge_diameter_scaled):
         N, T = x_j.shape[:2]
-        # Message passing: sender -> receiver (j -> i)
-        msg_advected = self.advection_op(x_j, warp_map) * (1.-sl_mask)
-        # Generate messages for selfloops (i -> i)
-        msg_advected += self.advection_op(x_i, warp_map) * sl_mask
-        
+
+        adv_x_i = self.advection_op(x_i, warp_map)
+        adv_x_j = self.advection_op(x_j, warp_map)
+
+        msg_advected = torch.where(sl_mask, adv_x_i, adv_x_j)
+        # N, T = x_j.shape[:2]
+        # # Message passing: sender -> receiver (j -> i)
+        # msg_advected = self.advection_op(x_j, warp_map) * (1.-sl_mask)
+        # # Generate messages for selfloops (i -> i)
+        # msg_advected += self.advection_op(x_i, warp_map) * sl_mask
         react_inputs = 1 / edge_diameter_scaled.view(-1, 1, 1).expand(N, T, 1)
         react_residual = self.mlp(react_inputs) # edge_diameter_scaled = 1 / self.diameter[edge_mask].expand(N, T)
         msg_advected = msg_advected * (react_residual * warp_map.unsqueeze(-1).abs()).exp()

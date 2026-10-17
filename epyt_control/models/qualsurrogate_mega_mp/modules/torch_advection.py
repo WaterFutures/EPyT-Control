@@ -1,7 +1,8 @@
 import torch
+from functools import lru_cache
+
 
 class AdvectionModule(torch.nn.Module):
-    
     def __init__(self, antialiasing=1, interpolation_mode='nearest', **kwargs):
         super().__init__(**kwargs)
         self.interpolation_mode = interpolation_mode
@@ -14,8 +15,16 @@ class AdvectionModule(torch.nn.Module):
     
     def forward(self, x, flow):
         raise NotImplementedError('Subclass this.')
-    
+
+
 class AdvectionModuleGridSampleDynamic(AdvectionModule):
+
+    @lru_cache(maxsize=2)
+    def grid(self, l, device):
+        return (
+            torch.linspace(-1, 1, l, device=device).view(1, 1, l),
+            ((l - 1) / 2)
+        )
 
     def forward(self, x, flow):
         B, L = x.shape[:2]
@@ -24,16 +33,16 @@ class AdvectionModuleGridSampleDynamic(AdvectionModule):
         # expand to shape: [B, 1, 1, L]
         x = x.transpose(2, 1).unsqueeze(2)  
 
-        # Create the grid: [1, 1, L, 1]
-        grid = torch.linspace(-1, 1, L, device=x.device).view(1, 1, L, 1)
-        grid = grid.expand(B, 1, L, 1)
+        # Create the grid: [1, 1, L]
+        grid, scale = self.grid(L, x.device)
+        grid = grid.expand(B, 1, L)
         
         # Normalize the shift
-        flow_normalized = (flow).view(B, 1, L, 1) / (L / 2)
+        flow_normalized = flow.view(B, 1, L) / scale
         shifted_grid = grid + flow_normalized
         
         # Add the second dimension for compatibility
-        shifted_grid = torch.cat([shifted_grid, torch.zeros_like(shifted_grid)], dim=-1)
+        shifted_grid = torch.stack([shifted_grid, torch.zeros_like(shifted_grid)], dim=-1)
         #shifted_grid = shifted_grid.clamp(-1, 1)
         # shape: [B, 1, 1, L]
         shifted_tensor = torch.nn.functional.grid_sample(
@@ -42,7 +51,7 @@ class AdvectionModuleGridSampleDynamic(AdvectionModule):
         )
 
         return shifted_tensor.squeeze(2).transpose(2, 1)
-
+    
 
 class AdvectionModuleGridSample(AdvectionModule):
     
@@ -61,7 +70,7 @@ class AdvectionModuleGridSample(AdvectionModule):
         grid = grid.expand(B, 1, L, 1)  # Shape: (B, 1, L, 1)
 
         # Add the shift (normalized to [-1, 1])
-        flow_normalized = (flow).view(B, 1, 1, 1) / (L / 2)
+        flow_normalized = (flow).view(B, 1, 1, 1) / ((L-1) / 2)
         shifted_grid = grid + flow_normalized 
 
         # Add the second dimension for compatibility
