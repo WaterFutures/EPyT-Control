@@ -23,17 +23,18 @@ def create_scenario():
         # Enable chlorine simulation and place a chlorine injection pump at the reservoir
         sim.enable_chemical_analysis()
 
-        reservoid_node_id, = sim.epanet_api.getNodeReservoirNameID()
+        reservoid_node_id, = sim.epanet_api.get_all_reservoirs_id()[0]
         sim.add_quality_source(node_id=reservoid_node_id,
                                pattern=np.array([1.]),
                                source_type=EpanetConstants.EN_MASS,
                                pattern_id="my-chl-injection")
 
         # Set initial concentration and simple (constant) reactions
-        zeroNodes = [0] * sim.epanet_api.getNodeCount()
-        sim.epanet_api.setNodeInitialQuality(zeroNodes)
-        sim.epanet_api.setLinkBulkReactionCoeff([-.5] * sim.epanet_api.getLinkCount())
-        sim.epanet_api.setLinkWallReactionCoeff([-.01] * sim.epanet_api.getLinkCount())
+        for node_idx in sim.epanet_api.get_all_nodes_idx():
+            sim.epanet_api.set_node_init_quality(node_idx, 0)
+        for link_idx in sim.epanet_api.get_all_links_idx():
+            sim.epanet_api.setlinkvalue(link_idx, EpanetConstants.EN_BULKORDER, -.5)
+            sim.epanet_api.setlinkvalue(link_idx, EpanetConstants.EN_WALLORDER, -.01)
 
         # Set flow and chlorine sensors everywhere
         sim.sensor_config = SensorConfig.create_empty_sensor_config(sim.sensor_config)
