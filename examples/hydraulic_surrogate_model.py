@@ -46,8 +46,8 @@ def create_test_data_anytown():
 
 if __name__ == "__main__":
     # Create and load a pre-trained hydrauic surrogate model for Anytown
-    model = PIGNNModel.from_network("anytown")#, load_pretrained_model=True)
-    model.load_model("anytown_pignn.pt")  # Alternatively, you can load your own pre-trained weights
+    model = PIGNNModel.from_network("anytown", load_pretrained_model=True)
+    #model.load_model("anytown_pignn.pt")  # Alternatively, you can load your own pre-trained weights
 
     # Create test data
     heads, reservoir_idx, demands, flows = create_test_data_anytown()  # First axis in 'heads', 'demands', and 'flows' encode time!

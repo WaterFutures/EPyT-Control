@@ -6,7 +6,8 @@ import numpy as np
 import torch
 from epyt_control.models import PIGNNModel, device
 from epyt_flow.simulation import ScenarioSimulator, EpanetConstants
-from epyt_flow.data.networks import load_anytown, to_seconds
+from epyt_flow.data.networks import load_anytown
+from epyt_flow.utils import to_seconds
 
 
 def create_test_data_anytown():
