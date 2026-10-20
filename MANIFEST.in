@@ -5,7 +5,7 @@ exclude REQUIREMENTS-DEV.txt
 exclude noxfile.py
 exclude Makefile
 exclude make.bat
-recursive-excludenetworks/ *
+recursive-exclude networks/ *
 recursive-exclude pretrained-models/ *
 recursive-exclude examples/ *
 recursive-exclude paper/ *
