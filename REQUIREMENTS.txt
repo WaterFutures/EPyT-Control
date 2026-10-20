@@ -1,3 +1,4 @@
 epyt_flow>=0.17.2
 scikit-learn>=1.4.0
+torch<=2.12.*
 stable-baselines3
