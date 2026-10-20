@@ -39,7 +39,8 @@ find = {}
 qualsurrogate = [
     "torch-geometric>=2.6.1",
     "torch-scatter",
-    "torch"
+    "torch",
+    "numba"
 ]
 hydsurrogate = [
     "torch-geometric>=2.6.1",
