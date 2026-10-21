@@ -38,6 +38,8 @@ extensions = [
     'nbsphinx'
 ]
 
+nbsphinx_allow_errors = True  # Temporarily allow errors (due to issues with installing the correct torch-scatter package on the RDT server)
+
 # Show line numbers in the source code
 viewcode_line_numbers = True
 
