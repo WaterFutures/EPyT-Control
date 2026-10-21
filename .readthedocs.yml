@@ -4,13 +4,20 @@ build:
   os: ubuntu-lts-latest
   tools:
     python: "3.10"
+  jobs:
+    pre_install:
+      - python -m pip install --upgrade --no-cache-dir pip setuptools 
+      - python -m pip install --upgrade --upgrade-strategy only-if-needed --no-cache-dir torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
+    post_install:
+      - python -m pip install --upgrade --upgrade-strategy only-if-needed --no-cache-dir torch-geometric==2.6.1
+      - python -m pip install --upgrade --upgrade-strategy only-if-needed --no-cache-dir torch-scatter -f https://data.pyg.org/whl/torch-2.10.0+cpu.html
 
 sphinx:
   configuration: docs/conf.py
 
 python:
   install:
-  - requirements: docs/requirements.txt
+  - requirements: docs/requirements.txt 
 
 formats:
   - pdf

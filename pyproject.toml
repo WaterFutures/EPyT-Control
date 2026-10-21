@@ -43,7 +43,7 @@ qualsurrogate = [
     "numba"
 ]
 hydsurrogate = [
-    "torch<=2.12.1"
+    "torch<=2.12.1",
     "torch-geometric>=2.6.1",
     "torch-scatter",
 ]
