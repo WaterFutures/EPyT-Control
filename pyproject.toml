@@ -37,15 +37,15 @@ find = {}
 
 [project.optional-dependencies]
 qualsurrogate = [
+    "torch<=2.12.1",
     "torch-geometric>=2.6.1",
     "torch-scatter",
-    "torch",
     "numba"
 ]
 hydsurrogate = [
+    "torch<=2.12.1"
     "torch-geometric>=2.6.1",
     "torch-scatter",
-    "torch"
 ]
 
 [dependency-groups]
