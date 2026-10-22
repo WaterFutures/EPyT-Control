@@ -53,5 +53,20 @@ More details and working examples can be found on the Jupyter Notebooks.
 
         pip install epyt-control[qualsurrogate]
 
+    Depending on your system configuration, the installation of `torch-geometric` and
+    `torch-scatter` can be a bit tricky.
+    If you do not require any GPU support, you can simply install the CPU version as follows:
+
+    .. code-block:: bash
+
+        pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
+        pip install torch-geometric==2.6.1
+        pip install torch-scatter -f https://data.pyg.org/whl/torch-2.10.0+cpu.html
+        pip install epyt-control[qualsurrogate]
+
+    For installing the GPU version or other specific versions, please checkout the respective
+    documentations of `torch-geometric <https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html>`_
+    and `torch-scatter <https://github.com/rusty1s/pytorch_scatter#installation>`_.
+
 
 .. [#f1] "MeGA-MP: Metric Graph Advection Message Passing", Janine Strotherm, Luca Hermes, André Artelt, Barbara Hammer, Transactions of Machine Learning Research (2026), https://openreview.net/forum?id=2aZPFrKYYb
