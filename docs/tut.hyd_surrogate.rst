@@ -25,6 +25,7 @@ Furthermore, we can compute gradients w.r.t. to demands and the network topology
 .. note::
 
     This surrogate model does not support networks with tanks.
+    Furthermore, it only supports [m^3/s] as flow and [m] as pressure units.
 
 Creating a new surrogate model for a specific water distribution network, requires passing
 the .inp file the constructor of :class:`~epyt_control.models.pi_gnn_hydsurrogate.PIGNNModel`.
