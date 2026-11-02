@@ -5,7 +5,7 @@ from epyt_control.models import PIGNNModel
 
 
 if __name__ == "__main__":
-    # Create a new hydrauic surrogate model for Anytown
+    # Create a new hydraulic surrogate model for Anytown
     model = PIGNNModel.from_network("anytown")
     #model = PIGNNModel("Anytown.inp")  # Alternatively, you can load an arbitrary .inp file via the constructor
 

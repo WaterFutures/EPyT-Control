@@ -45,7 +45,7 @@ def create_test_data_anytown():
 
 
 if __name__ == "__main__":
-    # Create and load a pre-trained hydrauic surrogate model for Anytown
+    # Create and load a pre-trained hydraulic surrogate model for Anytown
     model = PIGNNModel.from_network("anytown", load_pretrained_model=True)
     #model.load_model("anytown_pignn.pt")  # Alternatively, you can load your own pre-trained weights
 
@@ -59,9 +59,9 @@ if __name__ == "__main__":
     #scada_data = model.predict_as_scada_data(reservoir_heads=heads[:, reservoir_idx], demands=demands)
 
     # Compare predictions to ground truth
-    plot_timeseries_data(np.abs(heads_pred - heads),
+    plot_timeseries_data(np.abs(heads_pred - heads).T,
                          x_axis_label="Time",
                          y_axis_label="Absolute pressure head error")
-    plot_timeseries_data(np.abs(flows_pred - flows),  # TODO: two links per pipe - how to reduce to one pipe?
+    plot_timeseries_data(np.abs(flows_pred - flows).T,
                          x_axis_label="Time",
                          y_axis_label="Absolute flow rate error")

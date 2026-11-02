@@ -45,7 +45,7 @@ def create_test_data_anytown():
 
 
 if __name__ == "__main__":
-    # Create and load a pre-trained hydrauic surrogate model for Anytown
+    # Create and load a pre-trained hydraulic surrogate model for Anytown
     model = PIGNNModel.from_network("anytown", load_pretrained_model=True)
     #model.load_model("anytown_pignn.pt")  # Alternatively, you can load your own trained weights
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     heads_true = np.random.uniform(0, 1, size=hyd_pred["heads_pred"][0, :].shape).astype(np.float32)  # Generate random ground truth
     heads_true = torch.tensor(heads_true, dtype=torch.float32).to(device)
-    loss = lambda hpred: (hpred - heads_true).sum().view(-1, 1)  # Compare predicted pressure heads to some imaginery ground truth (here, random heads)
+    loss = lambda hpred: (hpred - heads_true).abs().sum().view(-1, 1)  # Compare predicted pressure heads to some imaginery ground truth (here, random heads)
 
     g = model.compute_gradients(reservoir_heads=heads[0, reservoir_idx].reshape(1, -1),
                                 demands=demands[0, :].reshape(1, -1),
